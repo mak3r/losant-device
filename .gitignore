@@ -1,0 +1,56 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of go build
+*.out
+
+# Go workspace file (project uses single module)
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# kubebuilder / controller-gen generated
+config/crd/bases/
+config/rbac/role.yaml
+!config/rbac/role_binding.yaml
+!config/rbac/service_account.yaml
+
+# zz_generated files are committed (needed for builds without code-gen tools)
+# but listed here as a reminder they are auto-generated
+# !api/**/zz_generated.*.go
+
+# Cover profiles
+cover.out
+cover.html
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# envtest binaries (downloaded during test runs)
+bin/k8s/
+
+# Docker
+.dockerignore
+
+# Local environment overrides
+.env
+.env.local
+*.local
+
+# Helm chart lock
+helm/Chart.lock
