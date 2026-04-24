@@ -16,10 +16,10 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 |---|---|---|
 | **developer** | `feature/developer/<name>` | `api/**`, `cmd/**`, `internal/controller/**`, `internal/losant/**`, `internal/gea/**`, `internal/monitor/**`, `internal/scheduler/**`, `internal/provisioner/**` |
 | **test-engineer** | works in `feature/developer/<name>` alongside developer | `*_test.go` files, `test/**`, mock implementations (`internal/*/mock_*.go`) |
-| **security** | `develop/security` | `config/rbac/**`, security CI steps in `.github/workflows/**`, secret handling review |
-| **qa** | `develop/qa` | `test/e2e/**`, `docs/acceptance-criteria.md`, `docs/runbook.md` |
-| **gitops-manager** | `develop/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
-| **docs** | `develop/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
+| **security** | `persona/security` | `config/rbac/**`, security CI steps in `.github/workflows/**`, secret handling review |
+| **qa** | `persona/qa` | `test/e2e/**`, `docs/acceptance-criteria.md`, `docs/runbook.md` |
+| **gitops-manager** | `persona/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
+| **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 
 ### Hard Rules
