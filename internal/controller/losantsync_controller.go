@@ -36,9 +36,9 @@ type LosantSyncReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=losant.io,resources=losantsyncs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=losant.io,resources=losantsyncs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=losant.io,resources=losantsyncs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=losant.io,resources=losantsyncs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
