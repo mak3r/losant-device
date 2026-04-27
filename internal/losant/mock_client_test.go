@@ -33,6 +33,25 @@ var baseSpec = losantv1alpha1.LosantSyncSpec{
 	Region:        "us-east",
 }
 
+func TestMockClient_Ping_Default(t *testing.T) {
+	m := NewMockClient()
+	if err := m.Ping(ctx); err != nil {
+		t.Errorf("Ping default: got error %v, want nil", err)
+	}
+	if len(m.PingCalls) != 1 {
+		t.Errorf("PingCalls: got %d, want 1", len(m.PingCalls))
+	}
+}
+
+func TestMockClient_Ping_Error(t *testing.T) {
+	m := NewMockClient()
+	want := errors.New("auth failed")
+	m.PingFunc = func(_ context.Context) error { return want }
+	if err := m.Ping(ctx); !errors.Is(err, want) {
+		t.Errorf("Ping error: got %v, want %v", err, want)
+	}
+}
+
 func TestMockClient_DefaultResponses(t *testing.T) {
 	m := NewMockClient()
 
@@ -97,6 +116,9 @@ func TestMockClient_SetError(t *testing.T) {
 	want := errors.New("api down")
 	m.SetError(want)
 
+	if err := m.Ping(ctx); !errors.Is(err, want) {
+		t.Errorf("Ping: got %v, want %v", err, want)
+	}
 	if _, err := m.EnsureClusterDevice(ctx, baseSpec); !errors.Is(err, want) {
 		t.Errorf("EnsureClusterDevice: got %v, want %v", err, want)
 	}
