@@ -36,10 +36,12 @@ rules:
     resources: ["secrets"]
     verbs: ["get"]
 
-  # LosantSyncReconciler owns the LosantSync CR and updates its status subresource
+  # LosantSyncReconciler owns the LosantSync CR and updates its status subresource.
+  # list+watch are required by controller-runtime to establish the informer cache;
+  # without them the reconciler never receives events and fails with forbidden at startup.
   - apiGroups: ["losant.io"]
     resources: ["losantsyncs"]
-    verbs: ["get", "update", "patch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["losant.io"]
     resources: ["losantsyncs/status"]
     verbs: ["get", "update", "patch"]
