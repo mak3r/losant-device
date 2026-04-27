@@ -42,7 +42,7 @@ vet: ## Run go vet
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run unit and integration tests with race detector
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-path $(LOCALBIN) -p path)" \
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
 	  go test -race ./... -coverprofile cover.out
 
 .PHONY: lint
