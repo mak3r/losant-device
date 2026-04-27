@@ -62,11 +62,21 @@ func TestMockClient_DefaultResponses(t *testing.T) {
 func TestMockClient_CallsRecorded(t *testing.T) {
 	m := NewMockClient()
 
-	m.EnsureClusterDevice(ctx, baseSpec)
-	m.EnsureNodeDevice(ctx, baseSpec, "node-a")
-	m.EnsureNodeDevice(ctx, baseSpec, "node-b")
-	m.UpdateDeviceTags(ctx, "app-123", "dev-1", nil)
-	m.GetDevice(ctx, "app-123", "dev-1")
+	if _, err := m.EnsureClusterDevice(ctx, baseSpec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.UpdateDeviceTags(ctx, "app-123", "dev-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.GetDevice(ctx, "app-123", "dev-1"); err != nil {
+		t.Fatal(err)
+	}
 
 	if len(m.EnsureClusterDeviceCalls) != 1 {
 		t.Errorf("EnsureClusterDeviceCalls: got %d, want 1", len(m.EnsureClusterDeviceCalls))
@@ -118,7 +128,9 @@ func TestMockClient_CustomHandlerFunc(t *testing.T) {
 
 func TestMockClient_Reset(t *testing.T) {
 	m := NewMockClient()
-	m.EnsureClusterDevice(ctx, baseSpec)
+	if _, err := m.EnsureClusterDevice(ctx, baseSpec); err != nil {
+		t.Fatal(err)
+	}
 	m.SetError(errors.New("err"))
 	m.Reset()
 
@@ -138,7 +150,7 @@ func TestMockClient_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			m.EnsureNodeDevice(ctx, baseSpec, "node")
+			_, _ = m.EnsureNodeDevice(ctx, baseSpec, "node")
 		}(i)
 	}
 	wg.Wait()
