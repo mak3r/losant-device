@@ -47,22 +47,51 @@ type Credentials struct {
 	ClusterDeviceID string
 }
 
-// Complete returns true when all four credential fields are non-empty.
+// Complete returns true when all four credential fields are populated with
+// real (non-placeholder) values.
 func (c Credentials) Complete() bool {
-	return c.ApplicationID != "" &&
-		c.AccessKey != "" &&
-		c.AccessSecret != "" &&
-		c.ClusterDeviceID != ""
+	return isReal(c.ApplicationID) &&
+		isReal(c.AccessKey) &&
+		isReal(c.AccessSecret) &&
+		isReal(c.ClusterDeviceID)
 }
 
-// envFile is the path to the gitignored local credentials file, relative to
-// this source file so it works regardless of where `go test` is invoked from.
+// HasAPICredentials returns true when the three fields needed for Losant REST
+// API calls are populated. ClusterDeviceID is not required here because it may
+// not be provisioned until the operator first runs.
+func (c Credentials) HasAPICredentials() bool {
+	return isReal(c.ApplicationID) &&
+		isReal(c.AccessKey) &&
+		isReal(c.AccessSecret)
+}
+
+// isReal returns false for empty strings and for obvious placeholder values
+// left over from the example file (e.g. "your-access-key-here").
+// A value is a placeholder only when it BOTH starts with "your-" AND ends
+// with "-here", matching the exact pattern used in env.test.local.example.
+func isReal(s string) bool {
+	if s == "" {
+		return false
+	}
+	lower := strings.ToLower(s)
+	return !(strings.HasPrefix(lower, "your-") && strings.HasSuffix(lower, "-here"))
+}
+
+// envFilePath returns the path to the gitignored local credentials file.
+// Checks test/env.test.local first (no dot prefix), then .env.test.local,
+// so either naming convention works.
 func envFilePath() string {
 	_, thisFile, _, _ := runtime.Caller(0)
 	// thisFile is .../test/testenv/credentials.go; go up two dirs to reach the
-	// repo root, then back down to test/.env.test.local.
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
-	return filepath.Join(repoRoot, "test", ".env.test.local")
+	// repo root, then back into the test/ directory.
+	testDir := filepath.Join(filepath.Dir(thisFile), "..")
+	for _, name := range []string{"env.test.local", ".env.test.local"} {
+		p := filepath.Join(testDir, name)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return filepath.Join(testDir, "env.test.local")
 }
 
 // LoadCredentials reads credentials from environment variables, falling back

@@ -35,6 +35,9 @@ func TestCredentials_Complete(t *testing.T) {
 		{"missing secret", Credentials{"app", "key", "", "dev"}, false},
 		{"missing device id", Credentials{"app", "key", "secret", ""}, false},
 		{"all empty", Credentials{}, false},
+		// placeholder values from example file must not count as real
+		{"placeholder device id", Credentials{"app", "key", "secret", "your-cluster-device-id-here"}, false},
+		{"placeholder access key", Credentials{"your-access-key-here", "k", "s", "d"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -42,6 +45,47 @@ func TestCredentials_Complete(t *testing.T) {
 				t.Errorf("Complete() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCredentials_HasAPICredentials(t *testing.T) {
+	cases := []struct {
+		name  string
+		creds Credentials
+		want  bool
+	}{
+		{"all real, no device id", Credentials{"app", "key", "secret", ""}, true},
+		{"all real including device", Credentials{"app", "key", "secret", "dev"}, true},
+		{"missing secret", Credentials{"app", "key", "", ""}, false},
+		{"placeholder app id", Credentials{"your-application-id-here", "key", "secret", ""}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.creds.HasAPICredentials(); got != tc.want {
+				t.Errorf("HasAPICredentials() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsReal(t *testing.T) {
+	cases := []struct {
+		s    string
+		want bool
+	}{
+		{"abc123", true},
+		{"", false},
+		{"your-access-key-here", false},
+		{"your-application-id-here", false},
+		{"YOUR-KEY-HERE", false}, // case-insensitive
+		{"yourkey", true},        // starts with "your" but not "your-"
+		{"somevalue-here", true},  // ends with "-here" but doesn't start with "your-"
+		{"your-partial", true},    // starts with "your-" but doesn't end with "-here"
+	}
+	for _, tc := range cases {
+		if got := isReal(tc.s); got != tc.want {
+			t.Errorf("isReal(%q) = %v, want %v", tc.s, got, tc.want)
+		}
 	}
 }
 
