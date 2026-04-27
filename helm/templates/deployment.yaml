@@ -1,0 +1,25 @@
+{{- /* Controller Deployment — full implementation in Phase 5 */ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "losant-device.fullname" . }}-controller
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "losant-device.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "losant-device.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "losant-device.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "losant-device.serviceAccountName" . }}
+      containers:
+        - name: manager
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "losant-device.fullname" . }}-gea
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "losant-device.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ include "losant-device.fullname" . }}-gea
+  template:
+    metadata:
+      labels:
+        app: {{ include "losant-device.fullname" . }}-gea
+    spec:
+      serviceAccountName: {{ include "losant-device.fullname" . }}-gea
+      containers:
+        - name: edge-agent
+          image: "{{ .Values.gea.image.repository }}:{{ .Values.gea.image.tag }}"
+          imagePullPolicy: {{ .Values.gea.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.gea.service.port }}
+              name: http-trigger
+          env:
+            - name: DEVICE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "losant-device.geaSecretName" . }}
+                  key: DEVICE_ID
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "losant-device.geaSecretName" . }}
+                  key: ACCESS_KEY
+            - name: ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "losant-device.geaSecretName" . }}
+                  key: ACCESS_SECRET
+          resources:
+            {{- toYaml .Values.gea.resources | nindent 12 }}
+          volumeMounts:
+            - name: gea-data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.gea.service.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: gea-data
+          persistentVolumeClaim:
+            claimName: {{ include "losant-device.fullname" . }}-gea-data

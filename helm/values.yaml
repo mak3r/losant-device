@@ -1,0 +1,52 @@
+controller:
+  image:
+    repository: ghcr.io/mak3r/losant-device
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  leaderElection: true
+  logLevel: info
+
+gea:
+  image:
+    repository: losant/edge-agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  storage:
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  credentials:
+    # Name of an existing secret containing DEVICE_ID, ACCESS_KEY, ACCESS_SECRET.
+    # If set, secretValues below are ignored.
+    existingSecret: ""
+    secretValues:
+      deviceID: ""
+      accessKey: ""
+      accessSecret: ""
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+namespace:
+  create: true
+  name: losant-system
