@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: losant-gea
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "losant-device.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gea
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ include "losant-device.fullname" . }}-gea
+  ports:
+    - name: http-trigger
+      port: {{ .Values.gea.service.port }}
+      targetPort: {{ .Values.gea.service.port }}
+      protocol: TCP
