@@ -1,0 +1,48 @@
+# Gitleaks configuration for losant-device-controller
+# Scans for accidentally committed credentials, API keys, and secrets.
+# Patterns include Losant API keys, Kubernetes secrets, and common credential formats.
+
+title = "losant-device gitleaks config"
+
+[extend]
+# Extend the default ruleset shipped with gitleaks
+useDefault = true
+
+[[allowlists]]
+description = "Test fixtures with intentionally fake/placeholder keys"
+paths = [
+  # Test directories may contain example credentials that are not real
+  '''test/.*''',
+  '''.*_test\.go''',
+  # Documentation examples
+  '''docs/.*''',
+]
+regexes = [
+  # Placeholder patterns used in tests and docs
+  '''REPLACE_ME''',
+  '''YOUR_.*_HERE''',
+  '''example-.*-key''',
+  '''fake-.*-secret''',
+  '''test-access-key''',
+  '''test-access-secret''',
+]
+
+[[rules]]
+id = "losant-access-key"
+description = "Losant Access Key"
+# Losant access keys follow the pattern of a UUID-like string
+regex = '''(?i)(losant[_-]?(access[_-]?key|api[_-]?key))\s*[=:]\s*['""]?([a-f0-9-]{36,})['""]?'''
+tags = ["losant", "key", "secret"]
+
+[[rules]]
+id = "losant-access-secret"
+description = "Losant Access Secret"
+regex = '''(?i)(losant[_-]?(access[_-]?secret|secret))\s*[=:]\s*['""]?([A-Za-z0-9+/]{40,})['""]?'''
+tags = ["losant", "secret"]
+
+[[rules]]
+id = "kubernetes-secret-data"
+description = "Base64-encoded Kubernetes secret data value (high entropy)"
+# Flag base64 values in YAML secret data blocks that look like real credentials
+regex = '''(?m)^\s{2,}(ACCESS_KEY|ACCESS_SECRET|DEVICE_ID|API_KEY|TOKEN|PASSWORD|SECRET)\s*:\s*[A-Za-z0-9+/]{20,}={0,2}$'''
+tags = ["kubernetes", "secret"]
