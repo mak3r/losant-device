@@ -39,6 +39,7 @@ import (
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 	"github.com/mak3r/losant-device/internal/controller"
+	"github.com/mak3r/losant-device/internal/monitor"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -201,11 +202,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	healthStore := monitor.NewHealthStore()
+
 	if err = (&controller.LosantSyncReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LosantSync")
+		os.Exit(1)
+	}
+	if err = (&controller.HealthWatcherReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Store:  healthStore,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HealthWatcher")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
