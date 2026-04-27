@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: losant-device-controller-rolebinding
+  labels:
+    app.kubernetes.io/name: losant-device-controller
+    app.kubernetes.io/component: controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: losant-device-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: losant-device-controller
+    namespace: losant-system
