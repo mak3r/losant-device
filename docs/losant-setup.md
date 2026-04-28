@@ -7,6 +7,8 @@ One-time configuration steps required before deploying the operator.
 - A Losant account at [app.losant.com](https://app.losant.com)
 - An existing Losant Application (or follow step 1 to create one)
 
+> **Bootstrap constraint**: The cluster Edge Compute device (Step 2) must exist in Losant **before** the operator starts. The controller reads its Losant device ID from the provisioning Secret at startup (`device-id` key) and uses it to authenticate via `POST /auth/device`. There is no automatic creation of this device — it must be pre-provisioned manually.
+
 ---
 
 ## Step 1: Create a Losant Application
@@ -70,7 +72,7 @@ The GEA runs an Edge Workflow that receives metric payloads from the controller 
 
 ## Step 5: Create the Provisioning Access Key
 
-The controller uses a separate access key for REST API calls (device provisioning only). This key does not need Edge Compute permissions.
+The controller uses a separate access key to authenticate to the Losant REST API. At startup it exchanges `{deviceId, key, secret}` via `POST /auth/device` to obtain a short-lived bearer token (cached for 23 hours). This key must have read/write access to Devices.
 
 1. Application → **Security** → **Access Keys** → **Add Access Key**
 2. Scope: read/write on Devices
@@ -89,11 +91,15 @@ kubectl create secret generic losant-gea-credentials \
   -n losant-system
 
 # Provisioning credentials — used by the controller for REST API calls
+# device-id must match the Edge Compute device created in Step 2
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=losant-access-key=<provisioning-key-from-step-5> \
-  --from-literal=losant-access-secret=<provisioning-secret-from-step-5> \
+  --from-literal=device-id=<edge-compute-device-id-from-step-2> \
+  --from-literal=access-key=<provisioning-key-from-step-5> \
+  --from-literal=access-secret=<provisioning-secret-from-step-5> \
   -n losant-system
 ```
+
+> **Key names matter**: The controller reads `device-id`, `access-key`, and `access-secret` (not `losant-access-key` / `losant-access-secret`). Using the wrong key names will cause the operator to fail at startup with a missing-key error.
 
 ---
 
