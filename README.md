@@ -79,8 +79,9 @@ kubectl create secret generic losant-gea-credentials \
   -n losant-system
 
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=losant-access-key=<key> \
-  --from-literal=losant-access-secret=<secret> \
+  --from-literal=device-id=<edge-compute-device-id> \
+  --from-literal=access-key=<key> \
+  --from-literal=access-secret=<secret> \
   -n losant-system
 
 # Deploy operator + GEA
@@ -107,7 +108,8 @@ helm install losant-device helm/ \
 make generate      # regenerate DeepCopy methods
 make manifests     # regenerate CRD/RBAC manifests
 make build         # build controller binary to bin/manager
-make test          # run unit + integration tests
+make test          # run unit + integration tests (no cluster required)
+make e2e           # run end-to-end tests (requires KUBECONFIG)
 make lint          # golangci-lint
 make run           # run controller locally against ~/.kube/config
 make docker-build  # build container image (set IMG=<image>:<tag>)
@@ -123,6 +125,8 @@ See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workfl
 - [Helm Values](helm/README.md) — full reference for all Helm chart values
 - [Agent Workflow](docs/agent-workflow.md) — multi-agent branch strategy and persona rules
 - [Losant Setup](docs/losant-setup.md) — one-time Losant Application and Edge Compute device configuration
+- [Runbook](docs/runbook.md) — operational procedures: deploy, diagnose, schedule changes, e2e suite
+- [Acceptance Criteria](docs/acceptance-criteria.md) — testable criteria for the full LosantSync reconciliation lifecycle
 
 ## License
 
