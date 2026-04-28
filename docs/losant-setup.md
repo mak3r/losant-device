@@ -7,7 +7,7 @@ One-time configuration steps required before deploying the operator.
 - A Losant account at [app.losant.com](https://app.losant.com)
 - An existing Losant Application (or follow step 1 to create one)
 
-> **Bootstrap constraint**: The cluster Edge Compute device (Step 2) must exist in Losant **before** the operator starts. The controller reads its Losant device ID from the provisioning Secret at startup (`device-id` key) and uses it to authenticate via `POST /auth/device`. There is no automatic creation of this device — it must be pre-provisioned manually.
+> **Bootstrap constraint**: The cluster Edge Compute device (Step 2) must exist in Losant **before** the operator starts. The controller discovers and manages peripheral (node) devices automatically, but the cluster-level Edge Compute device must be pre-provisioned manually.
 
 ---
 
@@ -70,13 +70,14 @@ The GEA runs an Edge Workflow that receives metric payloads from the controller 
 
 ---
 
-## Step 5: Create the Provisioning Access Key
+## Step 5: Create an Application API Token
 
-The controller uses a separate access key to authenticate to the Losant REST API. At startup it exchanges `{deviceId, key, secret}` via `POST /auth/device` to obtain a short-lived bearer token (cached for 23 hours). This key must have read/write access to Devices.
+The controller authenticates to the Losant REST API using a Losant Application API Token — **not** a device access key. Device access keys are MQTT-only credentials used by the GEA pod; they cannot make REST API calls.
 
-1. Application → **Security** → **Access Keys** → **Add Access Key**
-2. Scope: read/write on Devices
-3. Note the **Access Key** and **Access Secret**
+1. In your Application → **Security** → **API Tokens** → **Add API Token**
+2. Give it a name (e.g., `losant-device-controller`)
+3. Set the expiration as appropriate for your security policy (or leave as no expiration)
+4. Note the **API Token** value (shown only once)
 
 ---
 
@@ -90,16 +91,13 @@ kubectl create secret generic losant-gea-credentials \
   --from-literal=ACCESS_SECRET=<gea-access-secret-from-step-3> \
   -n losant-system
 
-# Provisioning credentials — used by the controller for REST API calls
-# device-id must match the Edge Compute device created in Step 2
+# Provisioning credentials — used by the controller for Losant REST API calls
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=device-id=<edge-compute-device-id-from-step-2> \
-  --from-literal=access-key=<provisioning-key-from-step-5> \
-  --from-literal=access-secret=<provisioning-secret-from-step-5> \
+  --from-literal=api-token=<application-api-token-from-step-5> \
   -n losant-system
 ```
 
-> **Key names matter**: The controller reads `device-id`, `access-key`, and `access-secret` (not `losant-access-key` / `losant-access-secret`). Using the wrong key names will cause the operator to fail at startup with a missing-key error.
+> **Key name matters**: The controller reads a single `api-token` key from this secret. Using any other key name will cause the operator to fail at startup with a missing-key error.
 
 ---
 
