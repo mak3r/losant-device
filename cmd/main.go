@@ -205,8 +205,9 @@ func main() {
 	healthStore := monitor.NewHealthStore()
 
 	if err = (&controller.LosantSyncReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		HealthStore: healthStore,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LosantSync")
 		os.Exit(1)

@@ -1,0 +1,20 @@
+apiVersion: losant.io/v1alpha1
+kind: LosantSync
+metadata:
+  name: my-cluster
+spec:
+  applicationID: "your-losant-application-id"
+  provisioningSecretRef:
+    name: losant-credentials
+    namespace: losant-device-system
+  clusterName: "my-k3s-cluster"
+  region: "us-west"
+  # Interval-based scheduling: report every 5 minutes.
+  # Mutually exclusive with cronSchedule.
+  interval: "5m"
+  # cronSchedule: "*/5 * * * *"  # Alternative: cron expression for the same schedule
+  gea:
+    serviceRef: losant-gea
+    port: 8080
+  # rancherURL: "https://rancher.example.com"  # Optional: link shown on Losant dashboard
+  # deviceRecipeID: "your-recipe-id"            # Optional: Losant device recipe for bulk provisioning

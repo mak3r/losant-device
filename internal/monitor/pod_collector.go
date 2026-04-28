@@ -22,12 +22,12 @@ import (
 
 // PodCounts holds pod-level aggregates for one node or the whole cluster.
 type PodCounts struct {
-	Total       int
-	Running     int
-	Failed      int
-	Pending     int
-	CrashLoop   int
-	NotReady    int
+	Total     int
+	Running   int
+	Failed    int
+	Pending   int
+	CrashLoop int
+	NotReady  int
 }
 
 // CollectPodCounts partitions pods by node, returning per-node and cluster-wide counts.
