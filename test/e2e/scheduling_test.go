@@ -122,8 +122,8 @@ var _ = Describe("LosantSync scheduling", func() {
 	})
 
 	// These scheduling tests require the developer to implement the NextScheduledTime
-	// advance logic after each successful sync cycle.
-	PDescribe("post-sync schedule advance [pending: developer TODO]", func() {
+	// advance logic after each successful sync cycle. Blocked on: #63.
+	PDescribe("post-sync schedule advance [pending: #63]", func() {
 		It("advances NextScheduledTime by the configured interval after each sync")
 		It("advances NextScheduledTime to the next cron tick after each sync")
 		It("persists NextScheduledTime across controller restarts so no cycle is missed")

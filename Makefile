@@ -1,5 +1,6 @@
 # Image URL to use for all building/pushing image targets
 IMG ?= controller:latest
+PLATFORMS ?= linux/arm64,linux/amd64
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -70,6 +71,15 @@ docker-build: ## Build the container image (set IMG=<image>:<tag>)
 .PHONY: docker-push
 docker-push: ## Push the container image (set IMG=<image>:<tag>)
 	docker push ${IMG}
+
+.PHONY: docker-buildx
+docker-buildx: ## Build and push multi-arch image via buildx (set IMG=<image>:<tag>)
+	docker buildx create --use --name losant-builder || true
+	docker buildx build \
+	  --platform $(PLATFORMS) \
+	  --tag $(IMG) \
+	  --push \
+	  -f Dockerfile .
 
 ##@ Deployment
 
