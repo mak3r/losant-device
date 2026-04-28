@@ -169,12 +169,67 @@ var _ = Describe("LosantSync lifecycle", func() {
 
 	// These tests will be enabled once the developer implements provisioning
 	// and GEA reporting (see TODO in internal/controller/losantsync_controller.go).
-	PDescribe("post-provisioning phases [pending: developer TODO]", func() {
+	// Blocked on: #63 (LosantSyncReconciler full reconcile logic).
+	PDescribe("post-provisioning phases [pending: #63]", func() {
 		It("transitions from Provisioning to Active after successful GEA report")
 		It("transitions to Degraded when the GEA is unreachable")
 		It("sets the GEAReachable condition to True when GEA responds")
 		It("sets the DevicesProvisioned condition after all nodes are provisioned")
 		It("populates NodeDevices map with a device ID per k8s node")
 		It("updates LastSyncTime after each successful report")
+
+		// AC-C-01..08 — condition assertions
+		It("GEAReachable=True after a successful metric report to GEA")
+		It("GEAReachable=False with non-empty reason when GEA is unreachable")
+		It("GEAReachable transitions back to True after GEA recovery")
+		It("DevicesProvisioned=True after all nodes have Losant device IDs")
+		It("LastSyncSucceeded=True after each successful GEA report")
+		It("LastSyncSucceeded=False when GEA returns non-2xx response")
+
+		// AC-S-01..03 — sync verification
+		It("lastSyncTime is updated after every successful sync cycle")
+		It("lastSyncTime is not updated when the GEA HTTP call fails")
+		It("nodeDevices contains exactly one entry per ready k8s node")
+
+		// AC-GEA-01..06 — GEA unreachability
+		It("controller does not crash when GEA is unreachable — requeueing with backoff")
+		It("phase transitions to Degraded when GEA is unreachable for a full sync cycle")
+		It("GEAReachable=False reason describes the failure")
+		It("lastSyncTime is not updated during a failed GEA call")
+		It("phase returns to Active and GEAReachable=True after GEA recovers")
+		It("retry interval uses exponential backoff capped at 5 minutes")
+
+		// AC-REST-01..05 — REST API unreachability
+		It("controller does not crash when Losant REST API is unreachable — requeueing with backoff")
+		It("phase remains Provisioning when REST API is unreachable")
+		It("DevicesProvisioned=False with descriptive reason when REST API is unavailable")
+		It("provisioning resumes automatically within one reconcile cycle after REST recovers")
+		It("partial provisioning state persists: previously provisioned nodes are not re-provisioned")
+	})
+
+	// AC-SUSP-03/04 — suspension HTTP and resume behaviour
+	// Blocked on: #63 (LosantSyncReconciler full reconcile logic).
+	PDescribe("suspension HTTP and resume [pending: #63]", func() {
+		It("makes no HTTP calls to GEA or Losant REST API while suspended")
+		It("resuming from suspension (suspend=false) restarts lifecycle from Provisioning")
+	})
+
+	// AC-NODE-ADD-01..04 — new node joins cluster
+	// Blocked on: #63 (LosantSyncReconciler full reconcile logic).
+	PDescribe("new node joins the cluster [pending: #63]", func() {
+		It("attempts to provision a Losant device within one reconcile cycle of a new node appearing")
+		It("status.nodeDevices contains an entry for the new node within 60s of it becoming Ready")
+		It("DevicesProvisioned transitions False→True after the new node is provisioned")
+		It("metrics for the new node appear in the next GEA report after provisioning")
+	})
+
+	// AC-NODE-RM-01..03 / AC-NODE-CORDON-01..02 — node removal and cordoning
+	// Blocked on: #63 (LosantSyncReconciler full reconcile logic).
+	PDescribe("node removal and cordoning [pending: #63]", func() {
+		It("removing a node from the cluster does not cause an error or Degraded phase")
+		It("removed node's entry may remain in nodeDevices and does not re-trigger provisioning")
+		It("removed node does not appear in subsequent GEA metric reports")
+		It("a cordoned node is still included in health metric reports")
+		It("cordoned node health snapshot reflects actual condition (Ready=True even if unschedulable)")
 	})
 })

@@ -201,22 +201,22 @@ Look for lines containing:
 | AC-P-02 | lifecycle_test.go | "enters Suspended immediately when Suspend=true on creation" | Implemented |
 | AC-P-03 | lifecycle_test.go | "transitions from Provisioning to Suspended when Suspend is enabled" | Implemented |
 | AC-P-04 | lifecycle_test.go | "does not remain in the empty phase indefinitely" | Implemented |
-| AC-P-05 | lifecycle_test.go | "transitions from Provisioning to Active after successful GEA report" | Pending #41 #11 #12 |
-| AC-P-06 | lifecycle_test.go | "transitions to Degraded when the GEA is unreachable" | Pending #41 #11 #12 |
-| AC-C-01..08 | lifecycle_test.go | Conditions (GEAReachable, DevicesProvisioned, LastSyncSucceeded) | Pending #41 #11 #12 |
-| AC-S-01..03 | lifecycle_test.go | LastSyncTime, nodeDevices | Pending #41 #11 #12 |
-| AC-GEA-01..06 | lifecycle_test.go | GEA failure/recovery | Pending #41 #11 #12 |
-| AC-REST-01..05 | lifecycle_test.go | REST API failure/recovery | Pending #41 #11 #12 |
-| AC-NODE-ADD-01..04 | (to be added) | New node join | Pending #41 |
-| AC-NODE-RM-01..03 | (to be added) | Node removal | Pending #41 |
-| AC-NODE-CORDON-01..02 | (to be added) | Node cordon | Pending #41 |
+| AC-P-05 | lifecycle_test.go | "transitions from Provisioning to Active after successful GEA report" | Pending #63 |
+| AC-P-06 | lifecycle_test.go | "transitions to Degraded when the GEA is unreachable" | Pending #63 |
+| AC-C-01..08 | lifecycle_test.go | Conditions (GEAReachable, DevicesProvisioned, LastSyncSucceeded) | Pending #63 |
+| AC-S-01..03 | lifecycle_test.go | LastSyncTime, nodeDevices | Pending #63 |
+| AC-GEA-01..06 | lifecycle_test.go | GEA failure/recovery | Pending #63 |
+| AC-REST-01..05 | lifecycle_test.go | REST API failure/recovery | Pending #63 |
+| AC-NODE-ADD-01..04 | lifecycle_test.go | New node join | Pending #63 |
+| AC-NODE-RM-01..03 | lifecycle_test.go | Node removal | Pending #63 |
+| AC-NODE-CORDON-01..02 | lifecycle_test.go | Node cordon | Pending #63 |
 | AC-SCHED-01 | scheduling_test.go | "is set close to the time of creation" | Implemented |
-| AC-SCHED-02..04 | scheduling_test.go | "advances NextScheduledTime by the configured interval after each sync" | Pending #41 |
-| AC-SCHED-05..07 | scheduling_test.go | Cron scheduling behavior | Pending #41 |
-| AC-SCHED-08..10 | scheduling_test.go | Controller restart mid-schedule | Pending #41 |
+| AC-SCHED-02..04 | scheduling_test.go | "advances NextScheduledTime by the configured interval after each sync" | Pending #63 |
+| AC-SCHED-05..07 | scheduling_test.go | Cron scheduling behavior | Pending #63 |
+| AC-SCHED-08..10 | scheduling_test.go | Controller restart mid-schedule | Pending #63 |
 | AC-SUSP-01 | lifecycle_test.go | Phase transitions with suspend | Implemented |
 | AC-SUSP-02 | scheduling_test.go | "stops advancing NextScheduledTime after Suspend is set" | Implemented |
-| AC-SUSP-03 | (to be added) | No HTTP calls while suspended | Pending #41 #11 #12 |
-| AC-SUSP-04 | (to be added) | Resume from suspension → Provisioning | Pending developer TODO |
+| AC-SUSP-03 | lifecycle_test.go | No HTTP calls while suspended | Pending #63 |
+| AC-SUSP-04 | lifecycle_test.go | Resume from suspension → Provisioning | Pending #63 |
 | AC-SUSP-05 | lifecycle_test.go | "phase remains Suspended when reconciled repeatedly" | Implemented |
 | CRD validation | validation_test.go | CEL rules, required fields, port range, defaults | Implemented |
