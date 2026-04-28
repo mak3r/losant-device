@@ -61,13 +61,11 @@ make install
    kubectl create namespace losant-system
    ```
 
-2. Create the provisioning secret:
+2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
 
    ```bash
    kubectl create secret generic losant-credentials \
-     --from-literal=device-id=<edge-compute-device-id> \
-     --from-literal=access-key=<key> \
-     --from-literal=access-secret=<secret> \
+     --from-literal=api-token=<application-api-token> \
      -n losant-system
    ```
 
@@ -108,10 +106,9 @@ make install
    ```bash
    kubectl logs -n losant-system deploy/losant-device-controller-manager | grep "provision"
    ```
-2. Verify the provisioning secret exists and contains `device-id`, `access-key`, and `access-secret`:
+2. Verify the provisioning secret exists and contains `api-token`:
    ```bash
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.device-id}' | base64 -d
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.access-key}' | base64 -d
+   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
    ```
 3. Check `DevicesProvisioned` condition for a reason:
    ```bash

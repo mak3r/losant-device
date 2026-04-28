@@ -79,9 +79,7 @@ kubectl create secret generic losant-gea-credentials \
   -n losant-system
 
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=device-id=<edge-compute-device-id> \
-  --from-literal=access-key=<key> \
-  --from-literal=access-secret=<secret> \
+  --from-literal=api-token=<application-api-token> \
   -n losant-system
 
 # Deploy operator + GEA

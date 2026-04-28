@@ -38,13 +38,11 @@ kubectl create secret generic losant-gea-credentials \
 
 ### Provisioning credentials
 
-The controller reads these three keys to authenticate to the Losant REST API via `POST /auth/device`. The `device-id` must be the Losant device ID of the pre-provisioned cluster Edge Compute device (see [Losant setup guide](losant-setup.md#bootstrap-constraint)):
+The controller authenticates to the Losant REST API using a Losant Application API Token (see [Losant setup guide](losant-setup.md#step-5-create-an-application-api-token)). Device access keys cannot be used here — they are MQTT-only credentials.
 
 ```bash
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=device-id=<edge-compute-device-id> \
-  --from-literal=access-key=<provisioning-key> \
-  --from-literal=access-secret=<provisioning-secret> \
+  --from-literal=api-token=<application-api-token> \
   -n losant-system
 ```
 
