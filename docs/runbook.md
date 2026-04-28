@@ -6,11 +6,24 @@ Operational procedures for the `losant-device` Kubernetes controller running on 
 
 ## Prerequisites
 
-```bash
-# Verify CRD is installed
-kubectl get crd losantsyncs.losant.io
+Always verify the CRD is installed first:
 
-# Check controller is running
+```bash
+kubectl get crd losantsyncs.losant.io
+```
+
+Then check the controller depending on how it was started:
+
+**Using `make run` (controller runs as a local process):**
+```bash
+# No namespace or deployment is created in the cluster.
+# Controller logs appear in the terminal where make run is executing.
+# The only in-cluster check needed is the CRD above.
+```
+
+**Using `make deploy` (controller runs as an in-cluster pod):**
+```bash
+# Check the controller deployment
 kubectl get deploy -n losant-system losant-device-controller-manager
 
 # Tail controller logs
@@ -40,8 +53,9 @@ make install
 
    ```bash
    kubectl create secret generic losant-credentials \
-     --from-literal=accessKey=<key> \
-     --from-literal=accessSecret=<secret> \
+     --from-literal=device-id=<edge-compute-device-id> \
+     --from-literal=access-key=<key> \
+     --from-literal=access-secret=<secret> \
      -n losant-system
    ```
 
@@ -82,9 +96,10 @@ make install
    ```bash
    kubectl logs -n losant-system deploy/losant-device-controller-manager | grep "provision"
    ```
-2. Verify the provisioning secret exists and contains `accessKey` and `accessSecret`:
+2. Verify the provisioning secret exists and contains `device-id`, `access-key`, and `access-secret`:
    ```bash
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data}' | base64 -d
+   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.device-id}' | base64 -d
+   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.access-key}' | base64 -d
    ```
 3. Check `DevicesProvisioned` condition for a reason:
    ```bash
@@ -199,12 +214,13 @@ make run
 # or: make deploy IMG=...
 ```
 
-### Known pending tests
+### Known skipped tests
 
-Several test cases are marked `PDescribe` (pending) because the developer has not yet implemented:
-- Device provisioning via the Losant REST API (blocked on #41, #11, #12)
-- Active/Degraded phase transitions
-- Post-sync `nextScheduledTime` advance
+Several test cases are marked `Skip` because they require live cluster operations not automatable in CI:
+- Node add / node remove (requires adding/removing a real cluster node)
+- Controller restart mid-schedule (requires `kubectl rollout restart` against a live controller pod)
+
+All other criteria are implemented and run automatically.
 
 ---
 
