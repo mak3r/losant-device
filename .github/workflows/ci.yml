@@ -69,3 +69,28 @@ jobs:
 
       - name: Lint Helm chart
         run: helm lint helm/
+
+  manifest-drift:
+    name: Manifest Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate manifests
+        run: make manifests
+
+      - name: Check for RBAC drift
+        run: |
+          if ! git diff --exit-code config/rbac/role.yaml; then
+            echo ""
+            echo "ERROR: config/rbac/role.yaml has drifted from the committed baseline."
+            echo "A security review is required before adding new RBAC permissions."
+            echo "Open an issue labeled persona/security and type/security before merging."
+            exit 1
+          fi
