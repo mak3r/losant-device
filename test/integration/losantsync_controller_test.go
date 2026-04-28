@@ -54,7 +54,7 @@ func baseLosantSync(name string) *losantv1alpha1.LosantSync {
 
 var _ = Describe("LosantSyncReconciler", func() {
 	Context("first reconcile", func() {
-		It("sets Phase=Provisioning and NextScheduledTime", func() {
+		It("reaches Phase=Active and sets NextScheduledTime", func() {
 			ls := baseLosantSync("test-first-reconcile")
 			Expect(k8sClient.Create(ctx, ls)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ls) })
@@ -62,7 +62,7 @@ var _ = Describe("LosantSyncReconciler", func() {
 			Eventually(func(g Gomega) {
 				var got losantv1alpha1.LosantSync
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ls.Name}, &got)).To(Succeed())
-				g.Expect(got.Status.Phase).To(Equal(losantv1alpha1.PhaseProvisioning))
+				g.Expect(got.Status.Phase).To(Equal(losantv1alpha1.PhaseActive))
 				g.Expect(got.Status.NextScheduledTime).NotTo(BeNil())
 			}, timeout, interval).Should(Succeed())
 		})
@@ -89,11 +89,11 @@ var _ = Describe("LosantSyncReconciler", func() {
 			Expect(k8sClient.Create(ctx, ls)).To(Succeed())
 			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ls) })
 
-			// Wait for first reconcile to complete, then override status.
+			// Wait for first reconcile to complete (reaches Active with mock clients), then override status.
 			Eventually(func(g Gomega) {
 				var got losantv1alpha1.LosantSync
 				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ls.Name}, &got)).To(Succeed())
-				g.Expect(got.Status.Phase).To(Equal(losantv1alpha1.PhaseProvisioning))
+				g.Expect(got.Status.Phase).To(Equal(losantv1alpha1.PhaseActive))
 			}, timeout, interval).Should(Succeed())
 
 			// Override status to Active with a future NextScheduledTime.
