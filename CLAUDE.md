@@ -70,7 +70,8 @@ To manually trigger a docs pass: use the `/docs-refresh` Claude Code skill.
 ```bash
 make generate      # Generate DeepCopy methods from api/ types
 make manifests     # Generate CRD, RBAC, webhook manifests
-make test          # Run all unit + integration tests
+make test          # Run unit + integration tests (excludes test/e2e/ — no cluster required)
+make e2e           # Run end-to-end tests only (requires KUBECONFIG to be set)
 make lint          # Run golangci-lint
 make run           # Run controller locally against ~/.kube/config
 make build         # Build controller binary to bin/
@@ -106,9 +107,11 @@ The developer adds `// +kubebuilder:rbac` markers in Go files so that `make mani
 
 ### `make manifests` and `role.yaml`
 
-`make manifests` (and `make test`, which calls it) will regenerate `config/rbac/role.yaml` from the current markers. If the markers are correctly aligned with the security-approved baseline, the regenerated content is semantically identical to the committed file — but controller-gen may produce different YAML formatting (inline vs. block style). Do not commit the regenerated file without security persona review; restore it with `git checkout config/rbac/role.yaml` if `git diff` shows only formatting changes.
+`make manifests` (and `make test`, which calls it) will regenerate `config/rbac/role.yaml` from the current markers. The committed `role.yaml` is in controller-gen format with `name: manager-role`; a kustomize JSON 6902 patch in `config/rbac/kustomization.yaml` renames it to `losant-device-controller-role` and adds `app.kubernetes.io` labels at deploy time. Do not edit the `name:` field in `role.yaml` directly.
 
-CI does not automatically guard against drift in `role.yaml`. Treat any unexpected `git diff` on that file after running `make manifests` as a signal to check with the security persona.
+**CI actively guards against drift.** The `manifest-drift` CI job (`.github/workflows/ci.yml`) runs `make manifests` then `git diff --exit-code config/rbac/role.yaml` on every push and PR to `develop` and `main`. If the job fails, it means your markers introduced permissions not present in the committed baseline — open a `persona/security` + `type/security` issue before merging.
+
+If `git diff` shows changes to `role.yaml` after a local `make manifests` run, restore it with `git checkout config/rbac/role.yaml` and check with the security persona before proceeding.
 
 ## Critical Files
 
