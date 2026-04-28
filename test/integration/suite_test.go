@@ -41,6 +41,9 @@ import (
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 	"github.com/mak3r/losant-device/internal/controller"
+	"github.com/mak3r/losant-device/internal/gea"
+	"github.com/mak3r/losant-device/internal/losant"
+	"github.com/mak3r/losant-device/internal/monitor"
 )
 
 var (
@@ -85,6 +88,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	By("creating losant credentials secret")
+	Expect(k8sClient.Create(ctx, &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-creds", Namespace: "default"},
+		StringData: map[string]string{"accessKey": "test-key", "accessSecret": "test-secret"},
+	})).To(Succeed())
+
 	By("starting controller manager")
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
@@ -94,8 +103,11 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&controller.LosantSyncReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		LosantClient: losant.NewMockClient(),
+		GEAClient:    gea.NewMockClient(),
+		HealthStore:  monitor.NewHealthStore(),
 	}).SetupWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
