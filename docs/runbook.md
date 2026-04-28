@@ -2,31 +2,37 @@
 
 Operational procedures for the `losant-device` Kubernetes controller running on k3s clusters.
 
+> **Before you begin**: Complete the one-time Losant setup in [docs/losant-setup.md](losant-setup.md) first. You will need the Edge Compute device ID, access key, and access secret from that guide before the commands below will work.
+
 ---
 
 ## Prerequisites
 
-Always verify the CRD is installed first:
+### Step 1 — Determine your run mode
+
+All subsequent steps branch on how the controller was started. Decide now:
+
+- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster
+- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace
+
+### Step 2 — Verify CRD is installed (all modes)
 
 ```bash
 kubectl get crd losantsyncs.losant.io
 ```
 
-Then check the controller depending on how it was started:
+Expected output shows `losantsyncs.losant.io` with a creation timestamp. If not found, run `make manifests install`.
 
-**Using `make run` (controller runs as a local process):**
-```bash
-# No namespace or deployment is created in the cluster.
-# Controller logs appear in the terminal where make run is executing.
-# The only in-cluster check needed is the CRD above.
-```
+### Step 3 — Verify controller is running
 
-**Using `make deploy` (controller runs as an in-cluster pod):**
+**If you used `make run`:**
+
+Controller logs appear in the terminal where `make run` is executing. No cluster checks are needed — there is no Deployment or namespace in the cluster.
+
+**If you used `make deploy`:**
+
 ```bash
-# Check the controller deployment
 kubectl get deploy -n losant-system losant-device-controller-manager
-
-# Tail controller logs
 kubectl logs -n losant-system deploy/losant-device-controller-manager -f
 ```
 
@@ -49,7 +55,13 @@ make install
 
 ## Creating a LosantSync Resource
 
-1. Create the provisioning secret in the target namespace:
+1. Create the `losant-system` namespace if it does not already exist (skip if you used `make deploy`, which creates it automatically):
+
+   ```bash
+   kubectl create namespace losant-system
+   ```
+
+2. Create the provisioning secret:
 
    ```bash
    kubectl create secret generic losant-credentials \
@@ -59,7 +71,7 @@ make install
      -n losant-system
    ```
 
-2. Apply a `LosantSync` manifest:
+3. Apply a `LosantSync` manifest:
 
    ```yaml
    apiVersion: losant.io/v1alpha1
@@ -79,7 +91,7 @@ make install
        port: 8080
    ```
 
-3. Monitor startup:
+4. Monitor startup:
 
    ```bash
    watch kubectl get losantsync my-cluster
