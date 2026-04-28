@@ -34,7 +34,7 @@ This device represents the cluster in Losant. Its credentials are used by the GE
    region       = <your-region>
    health_status = provisioning
    ```
-5. Under **Attributes**, add these (data type: `number` for all except `controller_version`):
+5. Under **Attributes**, add these (data type: `number` for all):
    ```
    total_nodes, ready_nodes, unhealthy_nodes
    total_pods, running_pods, failed_pods, pending_pods, crashloop_pods
