@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"sync/atomic"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 )
@@ -54,9 +54,7 @@ func (rt *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error
 // HTTP behaviour without Kubernetes fixtures.
 func newTestHTTPClient(serverURL string) *HTTPClient {
 	return &HTTPClient{
-		deviceID:     "dev-001",
-		accessKey:    "key-abc",
-		accessSecret: "secret-xyz",
+		token: "test-api-token",
 		httpClient: &http.Client{
 			Transport: &redirectTransport{serverURL: serverURL},
 		},
@@ -78,36 +76,29 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// authOK registers a POST /auth/device handler on mux that returns the given token.
-// It increments the returned counter on each call, allowing caching tests to
-// verify that the token exchange happens exactly once.
-func authOK(mux *http.ServeMux, token string) *int32 {
-	var calls int32
-	mux.HandleFunc("POST /auth/device", func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&calls, 1)
-		writeJSON(w, authResponse{Token: token, ApplicationID: "app-123"})
-	})
-	return &calls
-}
-
 // --- Constructor ---
 
-func TestNewHTTPClient_MissingKey(t *testing.T) {
-	cases := []struct {
-		name string
-		data map[string][]byte
-	}{
-		{"missing device-id", map[string][]byte{"access-key": []byte("k"), "access-secret": []byte("s")}},
-		{"missing access-key", map[string][]byte{"device-id": []byte("d"), "access-secret": []byte("s")}},
-		{"missing access-secret", map[string][]byte{"device-id": []byte("d"), "access-key": []byte("k")}},
+func TestNewHTTPClient_MissingAPIToken(t *testing.T) {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-creds", Namespace: "default"},
+		Data:       map[string][]byte{"wrong-key": []byte("value")},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			secret := &corev1.Secret{Data: tc.data}
-			if _, err := NewHTTPClient(secret); err == nil {
-				t.Errorf("NewHTTPClient with %s: expected error, got nil", tc.name)
-			}
-		})
+	if _, err := NewHTTPClient(secret); err == nil {
+		t.Error("NewHTTPClient with missing api-token: expected error, got nil")
+	}
+}
+
+func TestNewHTTPClient_Success(t *testing.T) {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-creds", Namespace: "default"},
+		Data:       map[string][]byte{"api-token": []byte("tok-abc")},
+	}
+	c, err := NewHTTPClient(secret)
+	if err != nil {
+		t.Fatalf("NewHTTPClient: unexpected error: %v", err)
+	}
+	if c.token != "tok-abc" {
+		t.Errorf("token: got %q, want %q", c.token, "tok-abc")
 	}
 }
 
@@ -115,7 +106,9 @@ func TestNewHTTPClient_MissingKey(t *testing.T) {
 
 func TestPing_Success(t *testing.T) {
 	mux := http.NewServeMux()
-	authOK(mux, "tok-1")
+	mux.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]string{"userId": "u-1"})
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -126,7 +119,7 @@ func TestPing_Success(t *testing.T) {
 
 func TestPing_AuthFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"message":"invalid credentials"}`, http.StatusUnauthorized)
+		http.Error(w, `{"message":"invalid token"}`, http.StatusUnauthorized)
 	}))
 	defer srv.Close()
 
@@ -135,29 +128,21 @@ func TestPing_AuthFailure(t *testing.T) {
 	}
 }
 
-// --- Token caching ---
-
-func TestTokenCaching_AuthCalledOnce(t *testing.T) {
+func TestPing_BearerTokenSent(t *testing.T) {
+	var gotAuth string
 	mux := http.NewServeMux()
-	authCalls := authOK(mux, "tok-cached")
-	// Catch-all for device list calls — both EnsureClusterDevice calls return the same device.
-	mux.HandleFunc("/applications/", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, struct {
-			Items []Device `json:"items"`
-		}{Items: []Device{{DeviceID: "existing-dev", Name: "k8s-cluster-test-cluster"}}})
+	mux.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		writeJSON(w, map[string]string{"userId": "u-1"})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	c := newTestHTTPClient(srv.URL)
-	spec := newTestSpec()
-	for i := range 2 {
-		if _, err := c.EnsureClusterDevice(context.Background(), spec); err != nil {
-			t.Fatalf("call %d: %v", i, err)
-		}
+	if err := newTestHTTPClient(srv.URL).Ping(context.Background()); err != nil {
+		t.Fatalf("Ping: %v", err)
 	}
-	if got := atomic.LoadInt32(authCalls); got != 1 {
-		t.Errorf("POST /auth/device called %d time(s), want 1 (token must be cached)", got)
+	if gotAuth != "Bearer test-api-token" {
+		t.Errorf("Authorization header: got %q, want %q", gotAuth, "Bearer test-api-token")
 	}
 }
 
@@ -165,7 +150,6 @@ func TestTokenCaching_AuthCalledOnce(t *testing.T) {
 
 func TestEnsureClusterDevice_Found(t *testing.T) {
 	mux := http.NewServeMux()
-	authOK(mux, "tok")
 	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, struct {
 			Items []Device `json:"items"`
@@ -186,7 +170,6 @@ func TestEnsureClusterDevice_Found(t *testing.T) {
 func TestEnsureClusterDevice_Created(t *testing.T) {
 	var posted bool
 	mux := http.NewServeMux()
-	authOK(mux, "tok")
 	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, struct {
 			Items []Device `json:"items"`
@@ -216,7 +199,6 @@ func TestEnsureClusterDevice_Created(t *testing.T) {
 func TestEnsureNodeDevice_Created_WithNodeNameTag(t *testing.T) {
 	var postBody map[string]interface{}
 	mux := http.NewServeMux()
-	authOK(mux, "tok")
 	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, struct {
 			Items []Device `json:"items"`
@@ -254,7 +236,6 @@ func TestEnsureNodeDevice_Created_WithNodeNameTag(t *testing.T) {
 func TestUpdateDeviceTags_CallsPatch(t *testing.T) {
 	var patchBody map[string]interface{}
 	mux := http.NewServeMux()
-	authOK(mux, "tok")
 	mux.HandleFunc("PATCH /applications/app-123/devices/dev-456", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&patchBody)
 		writeJSON(w, struct{}{})
@@ -275,7 +256,6 @@ func TestUpdateDeviceTags_CallsPatch(t *testing.T) {
 
 func TestGetDevice_ReturnsDevice(t *testing.T) {
 	mux := http.NewServeMux()
-	authOK(mux, "tok")
 	mux.HandleFunc("GET /applications/app-123/devices/dev-789", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, Device{DeviceID: "dev-789", Name: "my-device"})
 	})
