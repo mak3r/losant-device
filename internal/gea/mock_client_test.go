@@ -66,19 +66,23 @@ func TestMockClient_SetErrorNilRestoresDefault(t *testing.T) {
 
 func TestMockClient_AssertPayloadContains(t *testing.T) {
 	m := NewMockClient()
-	m.ReportState(ctx, StatePayload{
+	if err := m.ReportState(ctx, StatePayload{
 		DeviceID: "dev-cluster",
 		Attributes: map[string]interface{}{
 			"health_score": 87,
 			"ready_nodes":  3,
 		},
-	})
-	m.ReportState(ctx, StatePayload{
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReportState(ctx, StatePayload{
 		DeviceID: "dev-node-1",
 		Attributes: map[string]interface{}{
 			"health_score": 100,
 		},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Use a recorder to capture any test failures from the helper itself.
 	sub := &testing.T{}
@@ -109,7 +113,9 @@ func TestMockClient_AssertCalled(t *testing.T) {
 		t.Error("AssertCalled: expected failure when no calls recorded")
 	}
 
-	m.ReportState(ctx, StatePayload{DeviceID: "d"})
+	if err := m.ReportState(ctx, StatePayload{DeviceID: "d"}); err != nil {
+		t.Fatal(err)
+	}
 	sub2 := &testing.T{}
 	m.AssertCalled(sub2)
 	if sub2.Failed() {
@@ -126,7 +132,9 @@ func TestMockClient_AssertNotCalled(t *testing.T) {
 		t.Error("AssertNotCalled: expected pass when no calls recorded")
 	}
 
-	m.ReportState(ctx, StatePayload{DeviceID: "d"})
+	if err := m.ReportState(ctx, StatePayload{DeviceID: "d"}); err != nil {
+		t.Fatal(err)
+	}
 	sub2 := &testing.T{}
 	m.AssertNotCalled(sub2)
 	if !sub2.Failed() {
@@ -137,7 +145,7 @@ func TestMockClient_AssertNotCalled(t *testing.T) {
 func TestMockClient_Reset(t *testing.T) {
 	m := NewMockClient()
 	m.SetError(errors.New("err"))
-	m.ReportState(ctx, StatePayload{DeviceID: "d"})
+	_ = m.ReportState(ctx, StatePayload{DeviceID: "d"}) // intentionally discarded: error expected, call count is what matters
 
 	m.Reset()
 	if m.CallCount() != 0 {
@@ -155,7 +163,7 @@ func TestMockClient_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			m.ReportState(ctx, StatePayload{DeviceID: "d", Attributes: map[string]interface{}{"k": 1}})
+			_ = m.ReportState(ctx, StatePayload{DeviceID: "d", Attributes: map[string]interface{}{"k": 1}})
 		}()
 	}
 	wg.Wait()
@@ -172,8 +180,12 @@ func TestMockClient_CustomHandlerFunc(t *testing.T) {
 		return nil
 	}
 
-	m.ReportState(ctx, StatePayload{DeviceID: "dev-a"})
-	m.ReportState(ctx, StatePayload{DeviceID: "dev-b"})
+	if err := m.ReportState(ctx, StatePayload{DeviceID: "dev-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ReportState(ctx, StatePayload{DeviceID: "dev-b"}); err != nil {
+		t.Fatal(err)
+	}
 
 	if len(seen) != 2 || seen[0] != "dev-a" || seen[1] != "dev-b" {
 		t.Errorf("custom handler: got %v, want [dev-a dev-b]", seen)

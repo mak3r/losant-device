@@ -32,12 +32,14 @@ import (
 type MockClient struct {
 	mu sync.Mutex
 
+	PingFunc                func(ctx context.Context) error
 	EnsureClusterDeviceFunc func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (string, error)
 	EnsureNodeDeviceFunc    func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (string, error)
 	UpdateDeviceTagsFunc    func(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
 	GetDeviceFunc           func(ctx context.Context, applicationID, deviceID string) (*Device, error)
 
 	// Recorded calls — read after test assertions.
+	PingCalls                []struct{}
 	EnsureClusterDeviceCalls []EnsureClusterDeviceCall
 	EnsureNodeDeviceCalls    []EnsureNodeDeviceCall
 	UpdateDeviceTagsCalls    []UpdateDeviceTagsCall
@@ -81,6 +83,9 @@ func NewMockClient() *MockClient {
 func (m *MockClient) SetError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.PingFunc = func(_ context.Context) error {
+		return err
+	}
 	m.EnsureClusterDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec) (string, error) {
 		return "", err
 	}
@@ -99,7 +104,8 @@ func (m *MockClient) SetError(err error) {
 func (m *MockClient) CallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return len(m.EnsureClusterDeviceCalls) +
+	return len(m.PingCalls) +
+		len(m.EnsureClusterDeviceCalls) +
 		len(m.EnsureNodeDeviceCalls) +
 		len(m.UpdateDeviceTagsCalls) +
 		len(m.GetDeviceCalls)
@@ -109,14 +115,29 @@ func (m *MockClient) CallCount() int {
 func (m *MockClient) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.PingFunc = nil
 	m.EnsureClusterDeviceFunc = nil
 	m.EnsureNodeDeviceFunc = nil
 	m.UpdateDeviceTagsFunc = nil
 	m.GetDeviceFunc = nil
+	m.PingCalls = nil
 	m.EnsureClusterDeviceCalls = nil
 	m.EnsureNodeDeviceCalls = nil
 	m.UpdateDeviceTagsCalls = nil
 	m.GetDeviceCalls = nil
+}
+
+// Ping implements LosantClient.
+func (m *MockClient) Ping(ctx context.Context) error {
+	m.mu.Lock()
+	m.PingCalls = append(m.PingCalls, struct{}{})
+	fn := m.PingFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx)
+	}
+	return nil
 }
 
 // EnsureClusterDevice implements LosantClient.

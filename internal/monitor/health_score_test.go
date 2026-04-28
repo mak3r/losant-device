@@ -41,9 +41,9 @@ func TestHealthStatusFromScore(t *testing.T) {
 
 func TestComputeNodeHealthScore(t *testing.T) {
 	cases := []struct {
-		name  string
-		node  NodeHealth
-		want  int
+		name string
+		node NodeHealth
+		want int
 	}{
 		{"healthy node", NodeHealth{Ready: true}, 100},
 		{"not ready", NodeHealth{Ready: false}, 80},
