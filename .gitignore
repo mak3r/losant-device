@@ -21,9 +21,13 @@ vendor/
 
 # kubebuilder / controller-gen generated
 config/crd/bases/
-config/rbac/role.yaml
+# config/rbac/role.yaml is committed and owned by the security persona.
+# The developer must align // +kubebuilder:rbac markers with this policy baseline
+# rather than letting controller-gen free-generate the role.
+!config/rbac/role.yaml
 !config/rbac/role_binding.yaml
 !config/rbac/service_account.yaml
+!config/rbac/gea_service_account.yaml
 
 # zz_generated files are committed (needed for builds without code-gen tools)
 # but listed here as a reminder they are auto-generated
@@ -51,6 +55,7 @@ bin/k8s/
 .env
 .env.local
 *.local
+test/.env.test.local
 
 # Helm chart lock
 helm/Chart.lock

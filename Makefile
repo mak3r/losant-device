@@ -42,9 +42,13 @@ vet: ## Run go vet
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run unit and integration tests with race detector
+test: manifests generate fmt vet envtest ## Run unit and integration tests (no cluster required; excludes test/e2e)
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-	  go test -race ./... -coverprofile cover.out
+	  go test -race $$(go list ./... | grep -v '/test/e2e') -coverprofile cover.out
+
+.PHONY: e2e
+e2e: ## Run e2e tests against a live cluster (KUBECONFIG must be set)
+	go test -race -v -count=1 ./test/e2e/...
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint

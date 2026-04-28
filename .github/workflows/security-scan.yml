@@ -1,0 +1,45 @@
+name: Security Scan
+
+# Scans for secrets and credentials on every push and PR.
+# Gitleaks checks the full git history on PRs to catch secrets in any commit,
+# not just the final diff — preventing rebased-away secrets from landing on develop/main.
+
+on:
+  push:
+    branches:
+      - develop
+      - "develop/**"
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+  # Required for gitleaks to annotate PR diffs with findings
+  pull-requests: read
+
+jobs:
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so gitleaks can scan all commits, not just HEAD.
+          # This catches secrets that were added and then "removed" in a later commit.
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is required for organisation-level scans.
+          # For public repos or personal use this can be left unset.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          # Point gitleaks at the project config file so custom rules and
+          # test-fixture allowlists are respected on every run.
+          config-path: .gitleaks.toml

@@ -70,3 +70,71 @@ jobs:
 
       - name: Lint Helm chart
         run: helm lint helm/
+
+  manifest-drift:
+    name: Manifest Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate manifests
+        run: make manifests
+
+      - name: Check for RBAC drift
+        run: |
+          python3 - <<'EOF'
+          import subprocess, sys, yaml
+
+          generated_file = "config/rbac/role.yaml"
+          try:
+              committed_bytes = subprocess.check_output(
+                  ["git", "show", "HEAD:" + generated_file], stderr=subprocess.DEVNULL
+              )
+          except subprocess.CalledProcessError:
+              print("ERROR: config/rbac/role.yaml does not exist in the committed baseline.")
+              print("Add it via a security-reviewed PR before enabling this guard.")
+              sys.exit(1)
+
+          with open(generated_file) as f:
+              generated = yaml.safe_load(f)
+          committed = yaml.safe_load(committed_bytes)
+
+          def expand(rules):
+              """Expand rules into individual (apiGroup, resource, verb) triples.
+              This makes the comparison insensitive to how rules are grouped."""
+              out = set()
+              for r in (rules or []):
+                  for g in r.get("apiGroups", []):
+                      for res in r.get("resources", []):
+                          for v in r.get("verbs", []):
+                              out.add((g, res, v))
+              return out
+
+          gen_perms = expand(generated.get("rules", []))
+          com_perms = expand(committed.get("rules", []))
+
+          if gen_perms == com_perms:
+              print("RBAC rules are in sync with the committed security baseline.")
+              sys.exit(0)
+
+          added = gen_perms - com_perms
+          removed = com_perms - gen_perms
+          print("ERROR: config/rbac/role.yaml permissions have drifted from the committed baseline.")
+          print("A security review is required before adding new RBAC permissions.")
+          print("Open an issue labeled persona/security and type/security before merging.")
+          if added:
+              print("\nAdded permissions (require security review):")
+              for g, res, v in sorted(added):
+                  print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
+          if removed:
+              print("\nRemoved permissions:")
+              for g, res, v in sorted(removed):
+                  print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
+          sys.exit(1)
+          EOF
