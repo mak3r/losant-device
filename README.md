@@ -114,6 +114,7 @@ make lint          # golangci-lint
 make run           # run controller locally against ~/.kube/config
 make docker-build  # build container image (set IMG=<image>:<tag>)
 make docker-push   # push container image (set IMG=<image>:<tag>)
+make docker-buildx # build and push multi-arch image via buildx (set IMG=; optionally PLATFORMS=)
 ```
 
 See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workflow rules.

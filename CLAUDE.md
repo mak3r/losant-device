@@ -44,7 +44,7 @@ The merge manager is a gatekeeper, not a coder. When reviewing a PR it:
 
 When conflicts exist between two branches, the merge manager creates an issue assigned to both responsible personas and waits for them to resolve it.
 
-For releases: when `develop` is stable, the merge manager creates a PR from `develop` to `main`, bumps `internal/version/version.go`, and tags the release. No other file changes.
+For releases: when `develop` is stable, the merge manager creates a PR from `develop` to `main`, bumps `internal/version/version.go`, and tags the release with a `v*` tag. No other file changes. Pushing the tag triggers `.github/workflows/release.yml`, which runs `make test`, builds and pushes a multi-arch image to `ghcr.io/mak3r/losant-device:<tag>`, and creates a GitHub Release.
 
 ## Product Designer Rules
 
@@ -93,6 +93,7 @@ make run           # Run controller locally against ~/.kube/config
 make build         # Build controller binary to bin/
 make docker-build  # Build container image (set IMG=)
 make docker-push   # Push container image (set IMG=)
+make docker-buildx # Build and push multi-arch image via buildx (set IMG=; optionally PLATFORMS=linux/arm64,linux/amd64)
 make deploy        # Deploy to cluster via kustomize (set IMG=)
 make undeploy      # Remove from cluster
 make install       # Install CRDs only
