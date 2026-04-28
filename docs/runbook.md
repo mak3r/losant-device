@@ -8,26 +8,50 @@ Operational procedures for the `losant-device` Kubernetes controller running on 
 
 ## Prerequisites
 
-### Step 1 — Determine your run mode
+### Step 1 — Decide your run mode
 
-All subsequent steps branch on how the controller was started. Decide now:
+All subsequent steps branch on this decision. Pick one now:
 
-- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster
-- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace
+- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster. Use this for development and local testing.
+- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace. Use this for staging and production.
 
-### Step 2 — Verify CRD is installed (all modes)
+### Step 2 — Install or verify the CRD (all modes)
 
 ```bash
 kubectl get crd losantsyncs.losant.io
 ```
 
-Expected output shows `losantsyncs.losant.io` with a creation timestamp. If not found, run `make manifests install`.
+Expected output shows `losantsyncs.losant.io` with a creation timestamp. If not found:
 
-### Step 3 — Verify controller is running
+```bash
+make manifests install
+```
+
+### Step 3 — Start the controller
+
+**If you chose `make run`:**
+
+```bash
+make run
+```
+
+The controller starts in your terminal and connects to the cluster in `~/.kube/config`. Keep this terminal open — logs appear here. No namespace or Deployment is created in the cluster.
+
+**If you chose `make deploy`:**
+
+```bash
+# Build and push your image first (set IMG to your registry)
+make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
+
+# Deploy controller + GEA to the losant-system namespace
+make deploy IMG=my-registry/losant-device:v0.x.y
+```
+
+### Step 4 — Verify the controller is running
 
 **If you used `make run`:**
 
-Controller logs appear in the terminal where `make run` is executing. No cluster checks are needed — there is no Deployment or namespace in the cluster.
+Controller logs appear in the terminal from Step 3. No cluster checks are needed.
 
 **If you used `make deploy`:**
 
@@ -38,16 +62,18 @@ kubectl logs -n losant-system deploy/losant-device-controller-manager -f
 
 ---
 
-## Deploying / Upgrading
+## Upgrading an Existing Deployment
+
+These commands apply only when the controller is already running via `make deploy` and you want to update it.
 
 ```bash
-# Build and push image (set IMG to your registry)
+# Build and push the new image
 make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
 
-# Deploy to cluster
+# Roll out the new image
 make deploy IMG=my-registry/losant-device:v0.x.y
 
-# Install / update CRDs only (no controller restart needed for CRD additions)
+# Update CRDs only (no controller restart needed for CRD additions)
 make install
 ```
 
@@ -103,6 +129,10 @@ make install
 ### Phase stuck at Provisioning
 
 1. Check controller logs for provisioning errors:
+
+   **If using `make run`:** look for `provision` in the terminal running the controller.
+
+   **If using `make deploy`:**
    ```bash
    kubectl logs -n losant-system deploy/losant-device-controller-manager | grep "provision"
    ```
