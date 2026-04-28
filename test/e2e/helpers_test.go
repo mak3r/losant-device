@@ -122,3 +122,47 @@ func cleanupLosantSync(ctx context.Context, name string) {
 		return client.IgnoreNotFound(err) == nil && err != nil
 	}, pollTimeout, pollInterval).Should(BeTrue(), "LosantSync %q was not deleted within timeout", name)
 }
+
+// getCondition returns the named condition from LosantSync status, or nil if absent.
+func getCondition(ctx context.Context, name, condType string) *metav1.Condition {
+	ls := getLosantSync(ctx, name)
+	for i := range ls.Status.Conditions {
+		if ls.Status.Conditions[i].Type == condType {
+			return &ls.Status.Conditions[i]
+		}
+	}
+	return nil
+}
+
+// listReadyNodeNames returns the names of nodes currently reporting Ready=True.
+func listReadyNodeNames(ctx context.Context) []string {
+	nodes := &corev1.NodeList{}
+	Expect(k8sClient.List(ctx, nodes)).To(Succeed())
+	var names []string
+	for _, n := range nodes.Items {
+		for _, c := range n.Status.Conditions {
+			if c.Type == corev1.NodeReady && c.Status == corev1.ConditionTrue {
+				names = append(names, n.Name)
+			}
+		}
+	}
+	return names
+}
+
+// cordonNode marks the named node as unschedulable.
+func cordonNode(ctx context.Context, nodeName string) {
+	node := &corev1.Node{}
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, node)).To(Succeed())
+	node.Spec.Unschedulable = true
+	Expect(k8sClient.Update(ctx, node)).To(Succeed())
+}
+
+// uncordonNode removes the unschedulable mark from the named node (best-effort, for cleanup).
+func uncordonNode(ctx context.Context, nodeName string) {
+	node := &corev1.Node{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: nodeName}, node); err != nil {
+		return
+	}
+	node.Spec.Unschedulable = false
+	_ = k8sClient.Update(ctx, node)
+}

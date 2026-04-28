@@ -121,12 +121,72 @@ var _ = Describe("LosantSync scheduling", func() {
 		})
 	})
 
-	// These scheduling tests require the developer to implement the NextScheduledTime
-	// advance logic after each successful sync cycle. Blocked on: #63.
-	PDescribe("post-sync schedule advance [pending: #63]", func() {
-		It("advances NextScheduledTime by the configured interval after each sync")
-		It("advances NextScheduledTime to the next cron tick after each sync")
-		It("persists NextScheduledTime across controller restarts so no cycle is missed")
-		It("does not double-fire when the controller restarts mid-interval")
+	// AC-SCHED-02..10: post-sync schedule advance and controller restart behaviour.
+	Describe("post-sync schedule advance", func() {
+		var name string
+
+		BeforeEach(func() { name = uniqueName("sched-adv") })
+		AfterEach(func() { cleanupLosantSync(ctx, name) })
+
+		// AC-SCHED-02: NextScheduledTime MUST advance by the interval after each sync.
+		It("advances NextScheduledTime by the configured interval after each sync", func() {
+			const syncInterval = 30 * time.Second
+			Expect(k8sClient.Create(ctx, newLosantSync(name, "30s"))).To(Succeed())
+
+			// Wait for the first successful sync (phase=Active).
+			Eventually(func() losantv1alpha1.LosantSyncPhase {
+				return getLosantSync(ctx, name).Status.Phase
+			}, 60*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+			first := getLosantSync(ctx, name).Status.NextScheduledTime.DeepCopy()
+			Expect(first).NotTo(BeNil())
+
+			// Wait for NextScheduledTime to advance (second sync cycle completes).
+			Eventually(func() bool {
+				nst := getLosantSync(ctx, name).Status.NextScheduledTime
+				return nst != nil && nst.After(first.Time)
+			}, 90*time.Second, pollInterval).Should(BeTrue())
+
+			second := getLosantSync(ctx, name).Status.NextScheduledTime
+			// NextScheduledTime must advance by approximately the interval.
+			// 3s tolerance accounts for reconcile scheduling jitter.
+			Expect(second.Time).To(BeTemporally("~", first.Time.Add(syncInterval), 3*time.Second))
+		})
+
+		// AC-SCHED-06: cron-based NextScheduledTime advances to next cron tick after each sync.
+		It("advances NextScheduledTime to the next cron tick after each sync", func() {
+			ls := newLosantSync(name, "")
+			ls.Spec.CronSchedule = "* * * * *" // every minute
+			Expect(k8sClient.Create(ctx, ls)).To(Succeed())
+
+			Eventually(func() losantv1alpha1.LosantSyncPhase {
+				return getLosantSync(ctx, name).Status.Phase
+			}, 90*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+			first := getLosantSync(ctx, name).Status.NextScheduledTime.DeepCopy()
+			Expect(first).NotTo(BeNil())
+
+			// Wait for the next cron tick to pass and NextScheduledTime to advance.
+			Eventually(func() bool {
+				nst := getLosantSync(ctx, name).Status.NextScheduledTime
+				return nst != nil && nst.After(first.Time)
+			}, 120*time.Second, pollInterval).Should(BeTrue())
+
+			second := getLosantSync(ctx, name).Status.NextScheduledTime
+			// Next tick for "* * * * *" is ~60s from the previous tick; allow 10s tolerance.
+			Expect(second.Time).To(BeTemporally("~", first.Time.Add(time.Minute), 10*time.Second))
+		})
+
+		// AC-SCHED-08/09/10: controller restart behaviour.
+		// These tests require killing and restarting the controller pod, which cannot be
+		// done reliably in an automated e2e test without cluster admin access. Run manually:
+		//   kubectl rollout restart deploy/losant-device-controller-manager -n losant-system
+		It("persists NextScheduledTime across controller restarts so no cycle is missed", func() {
+			Skip("requires controller restart — run manually: kubectl rollout restart deploy/losant-device-controller-manager")
+		})
+
+		It("does not double-fire when the controller restarts mid-interval", func() {
+			Skip("requires controller restart — run manually: kubectl rollout restart deploy/losant-device-controller-manager")
+		})
 	})
 })
