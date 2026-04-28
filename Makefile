@@ -104,7 +104,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 CONTROLLER_TOOLS_VERSION ?= v0.16.4
 KUSTOMIZE_VERSION ?= v5.4.3
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v1.61.0
+GOLANGCI_LINT_VERSION ?= v1.64.8
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary
