@@ -87,10 +87,52 @@ jobs:
 
       - name: Check for RBAC drift
         run: |
-          if ! git diff --exit-code config/rbac/role.yaml; then
-            echo ""
-            echo "ERROR: config/rbac/role.yaml has drifted from the committed baseline."
-            echo "A security review is required before adding new RBAC permissions."
-            echo "Open an issue labeled persona/security and type/security before merging."
-            exit 1
-          fi
+          python3 - <<'EOF'
+          import subprocess, sys, yaml
+
+          generated_file = "config/rbac/role.yaml"
+          try:
+              committed_bytes = subprocess.check_output(
+                  ["git", "show", "HEAD:" + generated_file], stderr=subprocess.DEVNULL
+              )
+          except subprocess.CalledProcessError:
+              print("ERROR: config/rbac/role.yaml does not exist in the committed baseline.")
+              print("Add it via a security-reviewed PR before enabling this guard.")
+              sys.exit(1)
+
+          with open(generated_file) as f:
+              generated = yaml.safe_load(f)
+          committed = yaml.safe_load(committed_bytes)
+
+          def normalize(rules):
+              out = set()
+              for r in (rules or []):
+                  out.add((
+                      frozenset(r.get("apiGroups", [])),
+                      frozenset(r.get("resources", [])),
+                      frozenset(r.get("verbs", [])),
+                  ))
+              return out
+
+          gen_rules = normalize(generated.get("rules", []))
+          com_rules = normalize(committed.get("rules", []))
+
+          if gen_rules == com_rules:
+              print("RBAC rules are in sync with the committed security baseline.")
+              sys.exit(0)
+
+          added = gen_rules - com_rules
+          removed = com_rules - gen_rules
+          print("ERROR: config/rbac/role.yaml rules have drifted from the committed baseline.")
+          print("A security review is required before adding new RBAC permissions.")
+          print("Open an issue labeled persona/security and type/security before merging.")
+          if added:
+              print("\nAdded rules (require security review):")
+              for groups, resources, verbs in sorted(added, key=str):
+                  print(f"  apiGroups={sorted(groups)} resources={sorted(resources)} verbs={sorted(verbs)}")
+          if removed:
+              print("\nRemoved rules:")
+              for groups, resources, verbs in sorted(removed, key=str):
+                  print(f"  apiGroups={sorted(groups)} resources={sorted(resources)} verbs={sorted(verbs)}")
+          sys.exit(1)
+          EOF
