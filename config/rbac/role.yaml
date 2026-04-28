@@ -1,50 +1,60 @@
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: losant-device-controller-role
-  labels:
-    app.kubernetes.io/name: losant-device-controller
-    app.kubernetes.io/component: controller
+  name: manager-role
 rules:
-  # HealthWatcherReconciler reads cluster topology to compute health metrics
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch"]
-
-  # HealthWatcherReconciler counts pod states per node (CrashLoopBackOff, OOMKilled, etc.)
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
-
-  # pvc_collector tracks PVCs not in Bound phase
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims"]
-    verbs: ["get", "list", "watch"]
-
-  # event_collector counts Warning events in a 1-hour sliding window
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get", "list", "watch"]
-
-  # coredns_collector checks CoreDNS Deployment available replicas
-  - apiGroups: ["apps"]
-    resources: ["deployments"]
-    verbs: ["get", "list", "watch"]
-
-  # LosantSyncReconciler reads Losant API credentials for device provisioning
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get"]
-
-  # LosantSyncReconciler owns the LosantSync CR and updates its status subresource
-  - apiGroups: ["losant.io"]
-    resources: ["losantsyncs"]
-    verbs: ["get", "update", "patch"]
-  - apiGroups: ["losant.io"]
-    resources: ["losantsyncs/status"]
-    verbs: ["get", "update", "patch"]
-
-  # controller-runtime leader election requires lease management
-  - apiGroups: ["coordination.k8s.io"]
-    resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups:
+  - ""
+  resources:
+  - events
+  - nodes
+  - persistentvolumeclaims
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - losant.io
+  resources:
+  - losantsyncs
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - losant.io
+  resources:
+  - losantsyncs/status
+  verbs:
+  - get
+  - patch
+  - update

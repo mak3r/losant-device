@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - role.yaml
+  - role_binding.yaml
+  - service_account.yaml
+  - gea_service_account.yaml
+
+patches:
+  - target:
+      kind: ClusterRole
+      name: manager-role
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: losant-device-controller-role
+      - op: add
+        path: /metadata/labels
+        value:
+          app.kubernetes.io/name: losant-device-controller
+          app.kubernetes.io/component: controller
