@@ -8,11 +8,11 @@ This document describes how the AI agent personas collaborate in this repository
 main
 └── develop
     ├── feature/developer/<name>     developer + test-engineer collaborate here
-    ├── develop/security             security persona only
-    ├── develop/qa                   QA persona only
-    ├── develop/gitops-manager       GitOps manager persona only
-    ├── develop/test-engineer        test infrastructure only (not feature tests)
-    └── develop/docs                 auto-updated by docs agent on every merged PR
+    ├── persona/security             security persona only
+    ├── persona/qa                   QA persona only
+    ├── persona/gitops-manager       GitOps manager persona only
+    ├── persona/test-engineer        test infrastructure only (not feature tests)
+    └── persona/docs                 auto-updated by docs agent on every merged PR
 ```
 
 Feature branches are short-lived and created per-task. Long-lived persona branches (`develop/security`, etc.) accumulate that persona's ongoing work and PR into `develop` when stable.
@@ -42,7 +42,7 @@ Works **in the developer's feature branch** (`feature/developer/<name>`). Does n
 
 The test engineer and developer collaborate until `make test` passes on the shared branch before a PR is opened.
 
-**Test engineer's own branch** (`develop/test-engineer`) is reserved exclusively for test infrastructure:
+**Test engineer's own branch** (`persona/test-engineer`) is reserved exclusively for test infrastructure:
 - Ginkgo/Gomega suite setup (`test/integration/suite_test.go`)
 - envtest cluster configuration
 - Shared mock factories

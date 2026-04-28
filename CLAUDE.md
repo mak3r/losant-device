@@ -16,10 +16,10 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 |---|---|---|
 | **developer** | `feature/developer/<name>` | `api/**`, `cmd/**`, `internal/controller/**`, `internal/losant/**`, `internal/gea/**`, `internal/monitor/**`, `internal/scheduler/**`, `internal/provisioner/**` |
 | **test-engineer** | works in `feature/developer/<name>` alongside developer | `*_test.go` files, `test/**`, mock implementations (`internal/*/mock_*.go`) |
-| **security** | `develop/security` | `config/rbac/**`, security CI steps in `.github/workflows/**`, secret handling review |
-| **qa** | `develop/qa` | `test/e2e/**`, `docs/acceptance-criteria.md`, `docs/runbook.md` |
-| **gitops-manager** | `develop/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
-| **docs** | `develop/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
+| **security** | `persona/security` | `config/rbac/**`, security CI steps in `.github/workflows/**`, secret handling review |
+| **qa** | `persona/qa` | `test/e2e/**`, `docs/acceptance-criteria.md`, `docs/runbook.md` |
+| **gitops-manager** | `persona/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
+| **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 
 ### Hard Rules
@@ -92,6 +92,24 @@ make uninstall     # Remove CRDs only
 
 **HealthStore**: A shared in-memory struct (RWMutex-protected) written by `HealthWatcherReconciler` and read by `LosantSyncReconciler`. Decouples k8s event processing from Losant API calls.
 
+## RBAC Policy
+
+`config/rbac/role.yaml` is **security-owned**. The security persona is the only persona that commits changes to it.
+
+### `// +kubebuilder:rbac` marker rules
+
+The developer adds `// +kubebuilder:rbac` markers in Go files so that `make manifests` can regenerate `role.yaml`. Two hard rules govern these markers:
+
+1. **Markers must not exceed the security-approved baseline.** Never add a verb to a marker that is not already present in `config/rbac/role.yaml`. Adding an unapproved verb will cause `make manifests` to silently overwrite the security-approved file with a broader role.
+
+2. **To request a new permission**, open a GitHub issue labeled `persona/security` and `type/security` first. The security persona reviews and approves the addition by updating `role.yaml`. Only after that approval may the developer add the corresponding marker.
+
+### `make manifests` and `role.yaml`
+
+`make manifests` (and `make test`, which calls it) will regenerate `config/rbac/role.yaml` from the current markers. If the markers are correctly aligned with the security-approved baseline, the regenerated content is semantically identical to the committed file — but controller-gen may produce different YAML formatting (inline vs. block style). Do not commit the regenerated file without security persona review; restore it with `git checkout config/rbac/role.yaml` if `git diff` shows only formatting changes.
+
+CI does not automatically guard against drift in `role.yaml`. Treat any unexpected `git diff` on that file after running `make manifests` as a signal to check with the security persona.
+
 ## Critical Files
 
 Changing these files has broad impact — coordinate with other personas before modifying:
@@ -101,6 +119,7 @@ Changing these files has broad impact — coordinate with other personas before 
 - `internal/losant/client.go` — REST client interface; provisioner depends on this
 - `internal/gea/client.go` — GEA HTTP client interface; controller depends on this
 - `internal/controller/losantsync_controller.go` — main reconcile loop
+- `config/rbac/role.yaml` — security-owned; see RBAC Policy above
 
 ## GitHub Issue Routing
 

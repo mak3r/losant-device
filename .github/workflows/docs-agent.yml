@@ -1,0 +1,17 @@
+name: Docs Agent
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - develop
+      - main
+
+jobs:
+  trigger-docs-agent:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docs agent stub
+        run: |
+          echo "Docs agent trigger received — implementation pending"

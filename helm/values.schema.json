@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["controller", "gea"],
+  "properties": {
+    "controller": {
+      "type": "object",
+      "required": ["image"],
+      "properties": {
+        "image": {
+          "type": "object",
+          "required": ["repository"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "resources": { "type": "object" },
+        "leaderElection": { "type": "boolean" },
+        "logLevel": { "type": "string", "enum": ["debug", "info", "warn", "error"] }
+      }
+    },
+    "gea": {
+      "type": "object",
+      "required": ["image", "storage", "credentials"],
+      "properties": {
+        "image": {
+          "type": "object",
+          "required": ["repository"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string" },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "storage": {
+          "type": "object",
+          "required": ["size"],
+          "properties": {
+            "size": { "type": "string", "minLength": 1 },
+            "storageClassName": { "type": "string" }
+          }
+        },
+        "resources": { "type": "object" },
+        "credentials": {
+          "type": "object",
+          "properties": {
+            "existingSecret": { "type": "string" },
+            "secretValues": {
+              "type": "object",
+              "properties": {
+                "deviceID": { "type": "string" },
+                "accessKey": { "type": "string" },
+                "accessSecret": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "namespace": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

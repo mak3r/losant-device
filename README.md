@@ -106,9 +106,12 @@ helm install losant-device helm/ \
 ```bash
 make generate      # regenerate DeepCopy methods
 make manifests     # regenerate CRD/RBAC manifests
+make build         # build controller binary to bin/manager
 make test          # run unit + integration tests
 make lint          # golangci-lint
 make run           # run controller locally against ~/.kube/config
+make docker-build  # build container image (set IMG=<image>:<tag>)
+make docker-push   # push container image (set IMG=<image>:<tag>)
 ```
 
 See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workflow rules.
@@ -116,6 +119,8 @@ See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workfl
 ## Documentation
 
 - [Architecture](docs/architecture.md) — system design, device model, controller internals
+- [Deployment](docs/deployment.md) — kustomize and Helm deployment paths, GEA manifest layout
+- [Helm Values](helm/README.md) — full reference for all Helm chart values
 - [Agent Workflow](docs/agent-workflow.md) — multi-agent branch strategy and persona rules
 - [Losant Setup](docs/losant-setup.md) — one-time Losant Application and Edge Compute device configuration
 

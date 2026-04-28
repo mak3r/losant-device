@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: losant-gea
+  namespace: losant-system
+  labels:
+    app: losant-gea
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: losant-gea
+  template:
+    metadata:
+      labels:
+        app: losant-gea
+    spec:
+      serviceAccountName: losant-gea
+      containers:
+        - name: edge-agent
+          image: losant/edge-agent:latest
+          ports:
+            - containerPort: 8080
+              name: http-trigger
+              protocol: TCP
+          env:
+            - name: DEVICE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: losant-gea-credentials
+                  key: DEVICE_ID
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: losant-gea-credentials
+                  key: ACCESS_KEY
+            - name: ACCESS_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: losant-gea-credentials
+                  key: ACCESS_SECRET
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: gea-data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: gea-data
+          persistentVolumeClaim:
+            claimName: losant-gea-data
