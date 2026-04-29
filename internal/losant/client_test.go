@@ -215,7 +215,7 @@ func TestEnsureNodeDevice_Created_WithNodeNameTag(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	id, err := newTestHTTPClient(srv.URL).EnsureNodeDevice(context.Background(), newTestSpec(), "node-1")
+	id, err := newTestHTTPClient(srv.URL).EnsureNodeDevice(context.Background(), newTestSpec(), "node-1", "gw-123")
 	if err != nil {
 		t.Fatalf("EnsureNodeDevice: %v", err)
 	}
@@ -223,15 +223,18 @@ func TestEnsureNodeDevice_Created_WithNodeNameTag(t *testing.T) {
 		t.Errorf("deviceID: got %q, want %q", id, "node-dev-id")
 	}
 	tags, _ := postBody["tags"].([]interface{})
-	found := false
+	foundNodeName := false
 	for _, tag := range tags {
 		m, _ := tag.(map[string]interface{})
 		if m["key"] == "nodeName" && m["value"] == "node-1" {
-			found = true
+			foundNodeName = true
 		}
 	}
-	if !found {
+	if !foundNodeName {
 		t.Errorf("expected nodeName=node-1 in POST tags, got: %v", tags)
+	}
+	if postBody["gatewayId"] != "gw-123" {
+		t.Errorf("gatewayId: got %v, want %q", postBody["gatewayId"], "gw-123")
 	}
 }
 
