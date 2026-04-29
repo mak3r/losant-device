@@ -147,7 +147,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		ls.Status.NodeDevices = make(map[string]string)
 	}
 	for nodeName := range nodeSnapshot {
-		nodeDeviceID, nodeErr := lc.EnsureNodeDevice(ctx, ls.Spec, nodeName)
+		nodeDeviceID, nodeErr := lc.EnsureNodeDevice(ctx, ls.Spec, nodeName, clusterDeviceID)
 		if nodeErr != nil {
 			logger.Error(nodeErr, "failed to ensure node device", "node", nodeName)
 			return r.setDegraded(ctx, &ls, "DevicesProvisioned", "NodeDeviceError",

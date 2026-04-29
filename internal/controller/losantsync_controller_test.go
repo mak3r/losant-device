@@ -203,7 +203,7 @@ func TestEnsureNodeDeviceFailure(t *testing.T) {
 	hs := monitor.NewHealthStore()
 	hs.Update(monitor.ClusterHealth{}, map[string]monitor.NodeHealth{"bad-node": {}})
 	ml := losant.NewMockClient()
-	ml.EnsureNodeDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec, _ string) (string, error) {
+	ml.EnsureNodeDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec, _, _ string) (string, error) {
 		return "", errors.New("node api error")
 	}
 	mg := gea.NewMockClient()

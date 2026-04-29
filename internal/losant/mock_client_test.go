@@ -60,7 +60,7 @@ func TestMockClient_DefaultResponses(t *testing.T) {
 		t.Errorf("EnsureClusterDevice: got (%q, %v), want non-empty id and nil err", id, err)
 	}
 
-	nodeID, err := m.EnsureNodeDevice(ctx, baseSpec, "node-1")
+	nodeID, err := m.EnsureNodeDevice(ctx, baseSpec, "node-1", "gw-123")
 	if err != nil || nodeID == "" {
 		t.Errorf("EnsureNodeDevice: got (%q, %v), want non-empty id and nil err", nodeID, err)
 	}
@@ -84,10 +84,10 @@ func TestMockClient_CallsRecorded(t *testing.T) {
 	if _, err := m.EnsureClusterDevice(ctx, baseSpec); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-a"); err != nil {
+	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-a", "gw-123"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-b"); err != nil {
+	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "node-b", "gw-123"); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.UpdateDeviceTags(ctx, "app-123", "dev-1", nil); err != nil {
@@ -122,7 +122,7 @@ func TestMockClient_SetError(t *testing.T) {
 	if _, err := m.EnsureClusterDevice(ctx, baseSpec); !errors.Is(err, want) {
 		t.Errorf("EnsureClusterDevice: got %v, want %v", err, want)
 	}
-	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "n"); !errors.Is(err, want) {
+	if _, err := m.EnsureNodeDevice(ctx, baseSpec, "n", "gw-123"); !errors.Is(err, want) {
 		t.Errorf("EnsureNodeDevice: got %v, want %v", err, want)
 	}
 	if err := m.UpdateDeviceTags(ctx, "", "", nil); !errors.Is(err, want) {
@@ -172,7 +172,7 @@ func TestMockClient_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_, _ = m.EnsureNodeDevice(ctx, baseSpec, "node")
+			_, _ = m.EnsureNodeDevice(ctx, baseSpec, "node", "gw-123")
 		}(i)
 	}
 	wg.Wait()
