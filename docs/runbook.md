@@ -126,6 +126,14 @@ make install
 
 ## Diagnosing Phase Problems
 
+**Start here for any stuck phase** — read the conditions first:
+
+```bash
+kubectl get losantsync my-cluster -o jsonpath='{.status.conditions}' | python3 -m json.tool
+```
+
+Each condition has a `reason` and `message` that identify exactly which step failed. Use the sections below to dig further based on what you see.
+
 ### Phase stuck at Provisioning
 
 1. Check controller logs for provisioning errors:
@@ -140,11 +148,7 @@ make install
    ```bash
    kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
    ```
-3. Check `DevicesProvisioned` condition for a reason:
-   ```bash
-   kubectl get losantsync my-cluster -o jsonpath='{.status.conditions}'
-   ```
-4. Confirm the Losant REST API is reachable from within the cluster:
+3. Confirm the Losant REST API is reachable from within the cluster:
    ```bash
    kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -- \
      curl -I https://api.losant.com
@@ -152,21 +156,22 @@ make install
 
 ### Phase stuck at Degraded
 
-1. Check `GEAReachable` condition:
-   ```bash
-   kubectl get losantsync my-cluster \
-     -o jsonpath='{range .status.conditions[?(@.type=="GEAReachable")]}{.status}: {.reason} — {.message}{end}'
-   ```
-2. Verify the GEA pod is running:
+Degraded is set whenever any reconcile step fails — including provisioning steps. Always check the conditions first (above) to determine whether the failure is in provisioning (`DevicesProvisioned: False`) or GEA reporting (`GEAReachable: False`) before proceeding.
+
+**If `DevicesProvisioned` is False:** follow the Provisioning steps above.
+
+**If `GEAReachable` is False:**
+
+1. Verify the GEA pod is running:
    ```bash
    kubectl get pod -n losant-system -l app=losant-gea
    ```
-3. Test GEA HTTP trigger from within the cluster:
+2. Test GEA HTTP trigger from within the cluster:
    ```bash
    kubectl run -it --rm curl-test --image=curlimages/curl --restart=Never -- \
      curl -v http://losant-gea:8080
    ```
-4. Check GEA pod logs for MQTT connectivity issues:
+3. Check GEA pod logs for MQTT connectivity issues:
    ```bash
    kubectl logs -n losant-system -l app=losant-gea --tail=50
    ```
