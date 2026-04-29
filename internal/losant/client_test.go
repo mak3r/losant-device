@@ -146,6 +146,29 @@ func TestPing_BearerTokenSent(t *testing.T) {
 	}
 }
 
+// TestPing_ApplicationEndpoint is a TDD spec for issue #106.
+// Application API Tokens are rejected by GET /me (403 Forbidden).
+// Ping must be fixed to call GET /applications/{applicationId} instead.
+//
+// This test fails against the current implementation and will pass once #106 is resolved.
+func TestPing_ApplicationEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	// Simulate production: Application API Tokens get 403 on GET /me.
+	mux.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"type":"Forbidden","message":"Access is forbidden"}`, http.StatusForbidden)
+	})
+	// Any application-scoped path returns 200 — the expected endpoint after the fix.
+	mux.HandleFunc("/applications/", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"applicationId": "app-123"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if err := newTestHTTPClient(srv.URL).Ping(context.Background()); err != nil {
+		t.Fatalf("Ping: unexpected error: %v\n\tissue #106: Ping must use GET /applications/{id}, not GET /me", err)
+	}
+}
+
 // --- EnsureClusterDevice ---
 
 func TestEnsureClusterDevice_Found(t *testing.T) {
