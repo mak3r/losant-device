@@ -411,6 +411,78 @@ func TestCronScheduling(t *testing.T) {
 	}
 }
 
+// TestInvalidCronExpression verifies that a malformed CronSchedule expression causes
+// the reconciler to set Phase=Degraded with reason ScheduleError.
+func TestInvalidCronExpression(t *testing.T) {
+	ls := baseLS("bad-cron")
+	ls.Spec.CronSchedule = "not-a-cron"
+	ls.Spec.Interval = "" // clear interval so cron path is used
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("reconcile returned unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %v, want PhaseDegraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, "LastSyncSucceeded") {
+		t.Error("expected LastSyncSucceeded=False on schedule error")
+	}
+}
+
+// TestInvalidInterval verifies that a malformed Interval string causes the
+// reconciler to set Phase=Degraded with reason ScheduleError.
+func TestInvalidInterval(t *testing.T) {
+	ls := baseLS("bad-interval")
+	ls.Spec.Interval = "notaduration"
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("reconcile returned unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %v, want PhaseDegraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, "LastSyncSucceeded") {
+		t.Error("expected LastSyncSucceeded=False on invalid interval")
+	}
+}
+
+// TestNilHealthStore verifies the reconciler doesn't panic when HealthStore is nil,
+// and still completes the happy path using empty health data.
+func TestNilHealthStore(t *testing.T) {
+	ls := baseLS("nil-store")
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), nil)
+
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("reconcile returned unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %v, want PhaseActive", got.Status.Phase)
+	}
+}
+
 // conditionTrue reports whether a named condition has Status=True.
 func conditionTrue(conds []metav1.Condition, condType string) bool {
 	for _, c := range conds {
