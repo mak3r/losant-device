@@ -91,7 +91,7 @@ func (c *HTTPClient) ReportState(ctx context.Context, payload StatePayload) erro
 	if err != nil {
 		return fmt.Errorf("gea post %s: %w", c.endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
