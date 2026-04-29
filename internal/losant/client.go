@@ -54,7 +54,9 @@ type LosantClient interface {
 	EnsureClusterDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (deviceID string, err error)
 
 	// EnsureNodeDevice creates or retrieves the peripheral device for a k8s node.
-	EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (deviceID string, err error)
+	// gatewayID must be the Losant device ID of the cluster Edge Compute device;
+	// Losant requires peripheral devices to declare their gateway at creation time.
+	EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (deviceID string, err error)
 
 	// UpdateDeviceTags replaces the tag set on an existing Losant device.
 	UpdateDeviceTags(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
@@ -120,11 +122,11 @@ func (c *HTTPClient) EnsureClusterDevice(ctx context.Context, spec losantv1alpha
 	}
 
 	tags := tagsFromSpec(spec)
-	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassEdge, spec.DeviceRecipeID, tags)
+	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassEdge, spec.DeviceRecipeID, "", tags)
 }
 
 // EnsureNodeDevice looks up the peripheral device for a node by name and creates it if absent.
-func (c *HTTPClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (string, error) {
+func (c *HTTPClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error) {
 	name := nodeDeviceName(spec.ClusterName, nodeName)
 	existing, err := c.findDeviceByName(ctx, spec.ApplicationID, name)
 	if err != nil {
@@ -136,7 +138,7 @@ func (c *HTTPClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.L
 
 	tags := tagsFromSpec(spec)
 	tags = append(tags, Tag{Key: "nodeName", Value: nodeName})
-	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassNode, spec.DeviceRecipeID, tags)
+	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassNode, spec.DeviceRecipeID, gatewayID, tags)
 }
 
 // UpdateDeviceTags replaces the tags on the given device.
@@ -189,7 +191,7 @@ func (c *HTTPClient) findDeviceByName(ctx context.Context, applicationID, name s
 }
 
 // createDevice POSTs a new device and returns the assigned device ID.
-func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, class, recipeID string, tags []Tag) (string, error) {
+func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, class, recipeID, gatewayID string, tags []Tag) (string, error) {
 	payload := map[string]interface{}{
 		"name":        name,
 		"deviceClass": class,
@@ -197,6 +199,9 @@ func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, clas
 	}
 	if recipeID != "" {
 		payload["deviceRecipeId"] = recipeID
+	}
+	if gatewayID != "" {
+		payload["gatewayId"] = gatewayID
 	}
 
 	path := fmt.Sprintf("%s/applications/%s/devices", apiBase, applicationID)
