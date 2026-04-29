@@ -38,12 +38,11 @@ kubectl create secret generic losant-gea-credentials \
 
 ### Provisioning credentials
 
-The controller uses these for Losant REST API calls (device provisioning only):
+The controller authenticates to the Losant REST API using a Losant Application API Token (see [Losant setup guide](losant-setup.md#step-5-create-an-application-api-token)). Device access keys cannot be used here — they are MQTT-only credentials.
 
 ```bash
 kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=losant-access-key=<provisioning-key> \
-  --from-literal=losant-access-secret=<provisioning-secret> \
+  --from-literal=api-token=<application-api-token> \
   -n losant-system
 ```
 

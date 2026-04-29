@@ -16,12 +16,11 @@ limitations under the License.
 
 // Package losant implements the Losant REST provisioning client.
 //
-// Auth model: Losant requires a device-scoped bearer token obtained by
-// POSTing {"deviceId","key","secret"} to POST /auth/device. The cluster
-// Edge Compute device must be pre-provisioned manually (see docs/losant-setup.md)
-// before the operator starts; its Losant device ID is read from the provisioning
-// Secret under the "device-id" key. Tokens are cached and refreshed automatically
-// 1 hour before their 24-hour expiry window.
+// Auth model: Losant REST API calls require an Application API Token obtained
+// from the Losant dashboard (Application > Security > API Tokens). The token
+// is stored in the provisioning Secret under the "api-token" key and is sent
+// as a Bearer token on every request. No token exchange is needed.
+// Device access keys (MQTT credentials) are not used here.
 package losant
 
 import (
@@ -32,7 +31,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -44,16 +42,12 @@ const (
 	apiBase         = "https://api.losant.com"
 	deviceClassEdge = "edgeCompute"
 	deviceClassNode = "peripheral"
-	tokenRefreshTTL = 23 * time.Hour // refresh well before Losant's 24-hour token expiry
 )
 
 // LosantClient manages Losant device lifecycle via the REST provisioning API.
-//
-// All methods obtain a short-lived bearer token via POST /auth/device before
-// making any API call. The token is cached and refreshed transparently.
 type LosantClient interface {
-	// Ping verifies that the provisioning credentials are valid by performing
-	// the POST /auth/device token exchange. Returns nil on success.
+	// Ping verifies that the Application API Token is valid by calling GET /me.
+	// Returns nil on success.
 	Ping(ctx context.Context) error
 
 	// EnsureClusterDevice creates or retrieves the Edge Compute device representing this cluster.
@@ -82,60 +76,31 @@ type Tag struct {
 	Value string `json:"value"`
 }
 
-// authResponse is the JSON body returned by POST /auth/device.
-type authResponse struct {
-	Token         string `json:"token"`
-	ApplicationID string `json:"applicationId"`
-}
-
 // HTTPClient implements LosantClient using the Losant REST API.
 type HTTPClient struct {
-	deviceID     string
-	accessKey    string
-	accessSecret string
-
-	mu          sync.RWMutex
-	cachedToken string
-	tokenExpiry time.Time
-
+	token      string
 	httpClient *http.Client
 }
 
 // NewHTTPClient constructs an HTTPClient from a provisioning Secret.
 //
-// The Secret must contain three keys:
-//   - "device-id"      — Losant device ID of the pre-provisioned cluster Edge Compute device
-//   - "access-key"     — Losant application access key
-//   - "access-secret"  — Losant application access secret
-//
-// The cluster device must exist in Losant before the operator starts; see docs/losant-setup.md.
+// The Secret must contain:
+//   - "api-token" — Losant Application API Token (from Application > Security > API Tokens)
 func NewHTTPClient(secret *corev1.Secret) (*HTTPClient, error) {
-	deviceID, ok := secret.Data["device-id"]
+	token, ok := secret.Data["api-token"]
 	if !ok {
-		return nil, fmt.Errorf("provisioning secret %s/%s missing key \"device-id\"",
-			secret.Namespace, secret.Name)
-	}
-	key, ok := secret.Data["access-key"]
-	if !ok {
-		return nil, fmt.Errorf("provisioning secret %s/%s missing key \"access-key\"",
-			secret.Namespace, secret.Name)
-	}
-	sec, ok := secret.Data["access-secret"]
-	if !ok {
-		return nil, fmt.Errorf("provisioning secret %s/%s missing key \"access-secret\"",
+		return nil, fmt.Errorf("provisioning secret %s/%s missing key \"api-token\"",
 			secret.Namespace, secret.Name)
 	}
 	return &HTTPClient{
-		deviceID:     string(deviceID),
-		accessKey:    string(key),
-		accessSecret: string(sec),
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		token:      string(token),
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
-// Ping verifies credentials by performing the token exchange.
+// Ping verifies the Application API Token by calling GET /me.
 func (c *HTTPClient) Ping(ctx context.Context) error {
-	_, err := c.bearerToken(ctx)
+	_, err := c.doRequest(ctx, http.MethodGet, apiBase+"/me", nil)
 	return err
 }
 
@@ -198,70 +163,6 @@ func (c *HTTPClient) GetDevice(ctx context.Context, applicationID, deviceID stri
 	return &dev, nil
 }
 
-// bearerToken returns a valid bearer token, refreshing via POST /auth/device when needed.
-func (c *HTTPClient) bearerToken(ctx context.Context) (string, error) {
-	// Fast path: cached token still valid.
-	c.mu.RLock()
-	if c.cachedToken != "" && time.Now().Before(c.tokenExpiry) {
-		t := c.cachedToken
-		c.mu.RUnlock()
-		return t, nil
-	}
-	c.mu.RUnlock()
-
-	// Slow path: exchange credentials for a fresh token.
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Double-check under write lock in case another goroutine already refreshed.
-	if c.cachedToken != "" && time.Now().Before(c.tokenExpiry) {
-		return c.cachedToken, nil
-	}
-
-	payload := map[string]string{
-		"deviceId": c.deviceID,
-		"key":      c.accessKey,
-		"secret":   c.accessSecret,
-	}
-	b, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal auth payload: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBase+"/auth/device", bytes.NewReader(b))
-	if err != nil {
-		return "", fmt.Errorf("build auth request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("losant auth: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("read auth response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("losant auth: status %d: %s", resp.StatusCode, respBody)
-	}
-
-	var authResp authResponse
-	if err := json.Unmarshal(respBody, &authResp); err != nil {
-		return "", fmt.Errorf("decode auth response: %w", err)
-	}
-	if authResp.Token == "" {
-		return "", fmt.Errorf("losant auth: empty token in response")
-	}
-
-	c.cachedToken = authResp.Token
-	c.tokenExpiry = time.Now().Add(tokenRefreshTTL)
-	return c.cachedToken, nil
-}
-
 // findDeviceByName returns the first Losant device matching name, or nil if not found.
 func (c *HTTPClient) findDeviceByName(ctx context.Context, applicationID, name string) (*Device, error) {
 	path := fmt.Sprintf("%s/applications/%s/devices?filterField=name&filter=%s",
@@ -312,11 +213,6 @@ func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, clas
 
 // doRequest executes an authenticated HTTP request and returns the response body.
 func (c *HTTPClient) doRequest(ctx context.Context, method, path string, payload interface{}) ([]byte, error) {
-	token, err := c.bearerToken(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("auth: %w", err)
-	}
-
 	var body io.Reader
 	if payload != nil {
 		b, err := json.Marshal(payload)
@@ -330,7 +226,7 @@ func (c *HTTPClient) doRequest(ctx context.Context, method, path string, payload
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

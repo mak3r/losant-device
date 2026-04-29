@@ -152,24 +152,28 @@ status:
 - Fast path: processes events as they arrive, keeps HealthStore current
 
 **LosantSyncReconciler** runs on schedule:
-- Reads `LosantSync` CR for configuration
-- Calls provisioner to ensure all Losant devices exist
+- Reads `LosantSync` CR and `ProvisioningSecretRef` Secret
 - Checks `Status.NextScheduledTime` — if not yet due, returns `RequeueAfter`
-- When due: reads HealthStore snapshot → builds GEA payload → POSTs to GEA HTTP endpoint
-- Updates `Status.LastSyncTime`, `Status.NextScheduledTime`
+- When due: runs the full reconcile sequence (see below)
+- Updates `Status.LastSyncTime`, `Status.NextScheduledTime`, phase, and conditions
 - Returns `RequeueAfter(nextTime - now)`
 
 ### Scheduling
 
-Uses `github.com/robfig/cron/v3` to compute the next fire time from either a cron expression or a duration interval. Schedule state is persisted in `Status.NextScheduledTime`, so controller restarts re-arm without missing a cycle.
+Uses `github.com/robfig/cron/v3` to compute the next fire time from either `spec.cronSchedule` (cron expression) or `spec.interval` (duration string). Schedule state is persisted in `Status.NextScheduledTime`, so controller restarts re-arm without missing a cycle.
 
-### Provisioner
+### Reconcile Sequence
 
-On each reconcile, before reporting, the provisioner:
-1. Checks `Status.ClusterDeviceID` — creates the Edge Compute device if missing
-2. Lists current k8s nodes — creates peripheral devices for any node not in `Status.NodeDevices`
-3. Updates `health_status` tag on devices if the computed value changed
-4. For removed nodes: stops reporting (soft approach — device remains in Losant for historical data)
+On each scheduled reconcile, `LosantSyncReconciler` executes in order:
+
+1. **Ping** (`lc.Ping`) — verifies the Application API Token via `GET /me`; sets `phase=Degraded` on failure
+2. **EnsureClusterDevice** (`lc.EnsureClusterDevice`) — creates or retrieves the Edge Compute device; stores device ID in `Status.ClusterDeviceID`; sets `phase=Degraded` on failure
+3. **EnsureNodeDevice** per node in HealthStore (`lc.EnsureNodeDevice`) — creates or retrieves peripheral devices; sets `phase=Degraded` on first failure
+4. **ReportState cluster** (`gc.ReportState`) — POSTs cluster-level metrics to GEA HTTP endpoint; sets `phase=Degraded` on failure
+5. **ReportState per node** (`gc.ReportState`) — best-effort: failures are logged but do not set `Degraded` or block the reconcile
+6. Compute next `NextScheduledTime`; set `DevicesProvisioned=True`, `GEAReachable=True`, `LastSyncSucceeded=True`, `phase=Active`
+
+For removed nodes: the controller stops reporting (device remains in Losant for historical data).
 
 ## Health Score Algorithm
 

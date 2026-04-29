@@ -21,6 +21,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 | **gitops-manager** | `persona/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
 | **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
+| **product-designer** | `persona/product-designer` | `.claude/plans/**`, GitHub Issues (create only), `docs/architecture.md` (joint with docs) |
 
 ### Hard Rules
 
@@ -30,6 +31,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 - **gitops-manager** never modifies `internal/**` or `api/**`
 - **docs** never modifies `*.go` files or `helm/templates/**`
 - **merge-manager** never commits code of any kind
+- **product-designer** never modifies source files of any kind; creates plans and GitHub issues only
 
 ## Merge Manager Rules
 
@@ -42,7 +44,21 @@ The merge manager is a gatekeeper, not a coder. When reviewing a PR it:
 
 When conflicts exist between two branches, the merge manager creates an issue assigned to both responsible personas and waits for them to resolve it.
 
-For releases: when `develop` is stable, the merge manager creates a PR from `develop` to `main`, bumps `internal/version/version.go`, and tags the release. No other file changes.
+For releases: when `develop` is stable, the merge manager creates a PR from `develop` to `main`, bumps `internal/version/version.go`, and tags the release with a `v*` tag. No other file changes. Pushing the tag triggers `.github/workflows/release.yml`, which runs `make test`, builds and pushes a multi-arch image to `ghcr.io/mak3r/losant-device:<tag>`, and creates a GitHub Release.
+
+## Product Designer Rules
+
+The product designer is a trusted advisor and orchestrator, not an implementer. When invoked it:
+
+1. Designs system architecture and documents decisions in `.claude/plans/`
+2. Breaks work into GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
+3. Identifies dependencies between issues and personas; sets blocking relationships explicitly
+4. Advises on trade-offs and scope — proposes changes but never unilaterally implements them
+5. Reviews open issues and PRs to check alignment with architectural intent
+6. Never touches source files, test files, Helm charts, CI workflows, or RBAC manifests
+7. Never merges PRs — gates and merges are the merge manager's responsibility
+
+To invoke: ask Claude to "act as product-designer" or check out `persona/product-designer`.
 
 ## Test Engineer Pairing Model
 
@@ -70,12 +86,14 @@ To manually trigger a docs pass: use the `/docs-refresh` Claude Code skill.
 ```bash
 make generate      # Generate DeepCopy methods from api/ types
 make manifests     # Generate CRD, RBAC, webhook manifests
-make test          # Run all unit + integration tests
+make test          # Run unit + integration tests (excludes test/e2e/ — no cluster required)
+make e2e           # Run end-to-end tests only (requires KUBECONFIG to be set)
 make lint          # Run golangci-lint
 make run           # Run controller locally against ~/.kube/config
 make build         # Build controller binary to bin/
 make docker-build  # Build container image (set IMG=)
 make docker-push   # Push container image (set IMG=)
+make docker-buildx # Build and push multi-arch image via buildx (set IMG=; optionally PLATFORMS=linux/arm64,linux/amd64)
 make deploy        # Deploy to cluster via kustomize (set IMG=)
 make undeploy      # Remove from cluster
 make install       # Install CRDs only
@@ -106,9 +124,11 @@ The developer adds `// +kubebuilder:rbac` markers in Go files so that `make mani
 
 ### `make manifests` and `role.yaml`
 
-`make manifests` (and `make test`, which calls it) will regenerate `config/rbac/role.yaml` from the current markers. If the markers are correctly aligned with the security-approved baseline, the regenerated content is semantically identical to the committed file — but controller-gen may produce different YAML formatting (inline vs. block style). Do not commit the regenerated file without security persona review; restore it with `git checkout config/rbac/role.yaml` if `git diff` shows only formatting changes.
+`make manifests` (and `make test`, which calls it) will regenerate `config/rbac/role.yaml` from the current markers. The committed `role.yaml` is in controller-gen format with `name: manager-role`; a kustomize JSON 6902 patch in `config/rbac/kustomization.yaml` renames it to `losant-device-controller-role` and adds `app.kubernetes.io` labels at deploy time. Do not edit the `name:` field in `role.yaml` directly.
 
-CI does not automatically guard against drift in `role.yaml`. Treat any unexpected `git diff` on that file after running `make manifests` as a signal to check with the security persona.
+**CI actively guards against drift.** The `manifest-drift` CI job (`.github/workflows/ci.yml`) runs `make manifests` then `git diff --exit-code config/rbac/role.yaml` on every push and PR to `develop` and `main`. If the job fails, it means your markers introduced permissions not present in the committed baseline — open a `persona/security` + `type/security` issue before merging.
+
+If `git diff` shows changes to `role.yaml` after a local `make manifests` run, restore it with `git checkout config/rbac/role.yaml` and check with the security persona before proceeding.
 
 ## Critical Files
 

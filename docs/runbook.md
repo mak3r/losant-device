@@ -2,33 +2,78 @@
 
 Operational procedures for the `losant-device` Kubernetes controller running on k3s clusters.
 
+> **Before you begin**: Complete the one-time Losant setup in [docs/losant-setup.md](losant-setup.md) first. You will need the Edge Compute device ID, access key, and access secret from that guide before the commands below will work.
+
 ---
 
 ## Prerequisites
 
+### Step 1 — Decide your run mode
+
+All subsequent steps branch on this decision. Pick one now:
+
+- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster. Use this for development and local testing.
+- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace. Use this for staging and production.
+
+### Step 2 — Install or verify the CRD (all modes)
+
 ```bash
-# Verify CRD is installed
 kubectl get crd losantsyncs.losant.io
+```
 
-# Check controller is running
+Expected output shows `losantsyncs.losant.io` with a creation timestamp. If not found:
+
+```bash
+make manifests install
+```
+
+### Step 3 — Start the controller
+
+**If you chose `make run`:**
+
+```bash
+make run
+```
+
+The controller starts in your terminal and connects to the cluster in `~/.kube/config`. Keep this terminal open — logs appear here. No namespace or Deployment is created in the cluster.
+
+**If you chose `make deploy`:**
+
+```bash
+# Build and push your image first (set IMG to your registry)
+make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
+
+# Deploy controller + GEA to the losant-system namespace
+make deploy IMG=my-registry/losant-device:v0.x.y
+```
+
+### Step 4 — Verify the controller is running
+
+**If you used `make run`:**
+
+Controller logs appear in the terminal from Step 3. No cluster checks are needed.
+
+**If you used `make deploy`:**
+
+```bash
 kubectl get deploy -n losant-system losant-device-controller-manager
-
-# Tail controller logs
 kubectl logs -n losant-system deploy/losant-device-controller-manager -f
 ```
 
 ---
 
-## Deploying / Upgrading
+## Upgrading an Existing Deployment
+
+These commands apply only when the controller is already running via `make deploy` and you want to update it.
 
 ```bash
-# Build and push image (set IMG to your registry)
+# Build and push the new image
 make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
 
-# Deploy to cluster
+# Roll out the new image
 make deploy IMG=my-registry/losant-device:v0.x.y
 
-# Install / update CRDs only (no controller restart needed for CRD additions)
+# Update CRDs only (no controller restart needed for CRD additions)
 make install
 ```
 
@@ -36,16 +81,21 @@ make install
 
 ## Creating a LosantSync Resource
 
-1. Create the provisioning secret in the target namespace:
+1. Create the `losant-system` namespace if it does not already exist (skip if you used `make deploy`, which creates it automatically):
+
+   ```bash
+   kubectl create namespace losant-system
+   ```
+
+2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
 
    ```bash
    kubectl create secret generic losant-credentials \
-     --from-literal=accessKey=<key> \
-     --from-literal=accessSecret=<secret> \
+     --from-literal=api-token=<application-api-token> \
      -n losant-system
    ```
 
-2. Apply a `LosantSync` manifest:
+3. Apply a `LosantSync` manifest:
 
    ```yaml
    apiVersion: losant.io/v1alpha1
@@ -65,7 +115,7 @@ make install
        port: 8080
    ```
 
-3. Monitor startup:
+4. Monitor startup:
 
    ```bash
    watch kubectl get losantsync my-cluster
@@ -79,12 +129,16 @@ make install
 ### Phase stuck at Provisioning
 
 1. Check controller logs for provisioning errors:
+
+   **If using `make run`:** look for `provision` in the terminal running the controller.
+
+   **If using `make deploy`:**
    ```bash
    kubectl logs -n losant-system deploy/losant-device-controller-manager | grep "provision"
    ```
-2. Verify the provisioning secret exists and contains `accessKey` and `accessSecret`:
+2. Verify the provisioning secret exists and contains `api-token`:
    ```bash
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data}' | base64 -d
+   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
    ```
 3. Check `DevicesProvisioned` condition for a reason:
    ```bash
@@ -199,12 +253,13 @@ make run
 # or: make deploy IMG=...
 ```
 
-### Known pending tests
+### Known skipped tests
 
-Several test cases are marked `PDescribe` (pending) because the developer has not yet implemented:
-- Device provisioning via the Losant REST API (blocked on #41, #11, #12)
-- Active/Degraded phase transitions
-- Post-sync `nextScheduledTime` advance
+Several test cases are marked `Skip` because they require live cluster operations not automatable in CI:
+- Node add / node remove (requires adding/removing a real cluster node)
+- Controller restart mid-schedule (requires `kubectl rollout restart` against a live controller pod)
+
+All other criteria are implemented and run automatically.
 
 ---
 
