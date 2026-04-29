@@ -1,15 +1,18 @@
-issues:
-  exclude-rules:
-    # Pre-existing errcheck violations — tracked in #122 (persona/developer)
-    - path: internal/gea/client\.go
-      linters: [errcheck]
-    - path: internal/losant/client\.go
-      linters: [errcheck]
-    # Pre-existing errcheck violations — tracked in #123 (persona/test-engineer)
-    - path: test/testenv/credentials\.go
-      linters: [errcheck]
-    - path: test/testenv/credentials_test\.go
-      linters: [errcheck]
-    # Pre-existing staticcheck QF1008 — tracked in #123 (persona/test-engineer)
-    - path: test/e2e/scheduling_test\.go
-      linters: [staticcheck]
+version: "2"
+
+linters:
+  exclusions:
+    rules:
+      # Pre-existing errcheck violations — tracked in #122 (persona/developer)
+      - path: internal/gea/client\.go
+        linters: [errcheck]
+      - path: internal/losant/client\.go
+        linters: [errcheck]
+      # Pre-existing errcheck violations — tracked in #123 (persona/test-engineer)
+      - path: test/testenv/credentials\.go
+        linters: [errcheck]
+      - path: test/testenv/credentials_test\.go
+        linters: [errcheck]
+      # Pre-existing staticcheck QF1008 — tracked in #123 (persona/test-engineer)
+      - path: test/e2e/scheduling_test\.go
+        linters: [staticcheck]
