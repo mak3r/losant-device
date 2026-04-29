@@ -238,7 +238,7 @@ func (c *HTTPClient) doRequest(ctx context.Context, method, path string, payload
 	if err != nil {
 		return nil, fmt.Errorf("losant api %s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
