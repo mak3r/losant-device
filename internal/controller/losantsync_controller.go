@@ -116,7 +116,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	lc := r.LosantClient
 	if lc == nil {
 		var err error
-		lc, err = losant.NewHTTPClient(&secret)
+		lc, err = losant.NewHTTPClient(&secret, ls.Spec.ApplicationID)
 		if err != nil {
 			logger.Error(err, "failed to construct Losant client from secret")
 			return r.setDegraded(ctx, &ls, "LastSyncSucceeded", "InvalidSecret", err.Error())

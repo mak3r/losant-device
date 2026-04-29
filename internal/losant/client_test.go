@@ -54,7 +54,8 @@ func (rt *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error
 // HTTP behaviour without Kubernetes fixtures.
 func newTestHTTPClient(serverURL string) *HTTPClient {
 	return &HTTPClient{
-		token: "test-api-token",
+		token:         "test-api-token",
+		applicationID: "app-123",
 		httpClient: &http.Client{
 			Transport: &redirectTransport{serverURL: serverURL},
 		},
@@ -83,7 +84,7 @@ func TestNewHTTPClient_MissingAPIToken(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "losant-creds", Namespace: "default"},
 		Data:       map[string][]byte{"wrong-key": []byte("value")},
 	}
-	if _, err := NewHTTPClient(secret); err == nil {
+	if _, err := NewHTTPClient(secret, "app-456"); err == nil {
 		t.Error("NewHTTPClient with missing api-token: expected error, got nil")
 	}
 }
@@ -93,12 +94,15 @@ func TestNewHTTPClient_Success(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "losant-creds", Namespace: "default"},
 		Data:       map[string][]byte{"api-token": []byte("tok-abc")},
 	}
-	c, err := NewHTTPClient(secret)
+	c, err := NewHTTPClient(secret, "app-123")
 	if err != nil {
 		t.Fatalf("NewHTTPClient: unexpected error: %v", err)
 	}
 	if c.token != "tok-abc" {
 		t.Errorf("token: got %q, want %q", c.token, "tok-abc")
+	}
+	if c.applicationID != "app-123" {
+		t.Errorf("applicationID: got %q, want %q", c.applicationID, "app-123")
 	}
 }
 
@@ -106,8 +110,8 @@ func TestNewHTTPClient_Success(t *testing.T) {
 
 func TestPing_Success(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]string{"userId": "u-1"})
+	mux.HandleFunc("GET /applications/app-123", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"applicationId": "app-123"})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -131,9 +135,9 @@ func TestPing_AuthFailure(t *testing.T) {
 func TestPing_BearerTokenSent(t *testing.T) {
 	var gotAuth string
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /me", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /applications/app-123", func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		writeJSON(w, map[string]string{"userId": "u-1"})
+		writeJSON(w, map[string]interface{}{"applicationId": "app-123"})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

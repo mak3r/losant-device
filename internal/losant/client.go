@@ -46,8 +46,8 @@ const (
 
 // LosantClient manages Losant device lifecycle via the REST provisioning API.
 type LosantClient interface {
-	// Ping verifies that the Application API Token is valid by calling GET /me.
-	// Returns nil on success.
+	// Ping verifies that the Application API Token is valid by calling
+	// GET /applications/{applicationId}. Returns nil on success.
 	Ping(ctx context.Context) error
 
 	// EnsureClusterDevice creates or retrieves the Edge Compute device representing this cluster.
@@ -78,29 +78,33 @@ type Tag struct {
 
 // HTTPClient implements LosantClient using the Losant REST API.
 type HTTPClient struct {
-	token      string
-	httpClient *http.Client
+	token         string
+	applicationID string
+	httpClient    *http.Client
 }
 
-// NewHTTPClient constructs an HTTPClient from a provisioning Secret.
+// NewHTTPClient constructs an HTTPClient from a provisioning Secret and the target application ID.
 //
 // The Secret must contain:
 //   - "api-token" — Losant Application API Token (from Application > Security > API Tokens)
-func NewHTTPClient(secret *corev1.Secret) (*HTTPClient, error) {
+func NewHTTPClient(secret *corev1.Secret, applicationID string) (*HTTPClient, error) {
 	token, ok := secret.Data["api-token"]
 	if !ok {
 		return nil, fmt.Errorf("provisioning secret %s/%s missing key \"api-token\"",
 			secret.Namespace, secret.Name)
 	}
 	return &HTTPClient{
-		token:      string(token),
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		token:         string(token),
+		applicationID: applicationID,
+		httpClient:    &http.Client{Timeout: 30 * time.Second},
 	}, nil
 }
 
-// Ping verifies the Application API Token by calling GET /me.
+// Ping verifies the Application API Token by calling GET /applications/{applicationID}.
+// This endpoint is accessible to Application API Tokens (unlike GET /me, which is user-only).
 func (c *HTTPClient) Ping(ctx context.Context) error {
-	_, err := c.doRequest(ctx, http.MethodGet, apiBase+"/me", nil)
+	path := fmt.Sprintf("%s/applications/%s", apiBase, c.applicationID)
+	_, err := c.doRequest(ctx, http.MethodGet, path, nil)
 	return err
 }
 
