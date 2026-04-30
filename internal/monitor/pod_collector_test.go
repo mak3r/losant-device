@@ -102,6 +102,13 @@ func TestCollectPodCounts_Empty(t *testing.T) {
 	}
 }
 
+func TestIsPodReady_NoConditions(t *testing.T) {
+	pod := &corev1.Pod{} // no PodReady condition — falls through to return false
+	if isPodReady(pod) {
+		t.Error("isPodReady: expected false for pod with no conditions")
+	}
+}
+
 func TestCollectPodCounts_CrashLoopNotCountedAsNotReady(t *testing.T) {
 	// A CrashLoopBackOff pod is pending/waiting — not in Running phase.
 	// NotReady counter only increments for Running pods that are not Ready.
