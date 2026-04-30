@@ -81,6 +81,30 @@ Runs automatically via `.github/workflows/docs-agent.yml` on every merged PR. It
 
 To manually trigger a docs pass: use the `/docs-refresh` Claude Code skill.
 
+## Handoff Rules
+
+**A persona's work is not complete until the next persona in the chain can find and act on it.**
+
+Finishing your own file edits and committing is necessary but not sufficient. If your work creates a dependency for another persona, you must hand off before closing the issue.
+
+### General rule (applies to all personas)
+
+After completing work that unblocks another persona, choose one of:
+
+1. **Same issue, next persona**: Remove your `persona/<name>` label from the issue, add `persona/<next>` label, and comment with what was done and exactly what the next persona must do.
+2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and `type/<task|bug|security>` with explicit instructions, then close your issue.
+
+Without a handoff, the queue-based `watch-work` model breaks — agents only pick up issues labeled for their persona.
+
+### Security → Developer handoff (example)
+
+When the security persona approves an RBAC change:
+1. Update `config/rbac/role.yaml` and commit to `persona/security`
+2. Comment on the issue with the approved verbs and the exact `// +kubebuilder:rbac` markers the developer must add
+3. **Re-label** the issue from `persona/security` to `persona/developer` — or open a new `persona/developer` issue — so the developer's `watch-work` queue picks it up
+
+Step 3 is mandatory. Without it, the developer never sees the work.
+
 ## Standard Commands
 
 ```bash
