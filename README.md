@@ -53,6 +53,11 @@ Devices are tagged with `cluster_name`, `region`, `health_status`, and `rancher_
 
 ## Quick Start
 
+> **Which branch to use**: `main` contains stable tagged releases only. All bug fixes and in-progress work land in `develop` first. If you are doing usability testing or want the latest fixes, check out `develop` before building:
+> ```bash
+> git checkout develop && git pull origin develop
+> ```
+
 ### Prerequisites
 
 - Go 1.23+

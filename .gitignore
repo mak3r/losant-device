@@ -56,6 +56,7 @@ bin/k8s/
 .env.local
 *.local
 test/.env.test.local
+.claude/settings.local.json
 
 # Helm chart lock
 helm/Chart.lock

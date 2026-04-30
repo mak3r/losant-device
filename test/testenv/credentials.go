@@ -82,7 +82,7 @@ func LoadCredentials() (Credentials, bool) {
 	// If any field is missing, try the local file.
 	if !creds.Complete() {
 		if file, err := os.Open(envFilePath()); err == nil {
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			overrides := parseEnvFile(file)
 			if creds.ApplicationID == "" {
 				creds.ApplicationID = overrides["LOSANT_APPLICATION_ID"]

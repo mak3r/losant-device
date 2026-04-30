@@ -150,7 +150,7 @@ var _ = Describe("LosantSync scheduling", func() {
 			second := getLosantSync(ctx, name).Status.NextScheduledTime
 			// NextScheduledTime must advance by approximately the interval.
 			// 3s tolerance accounts for reconcile scheduling jitter.
-			Expect(second.Time).To(BeTemporally("~", first.Time.Add(syncInterval), 3*time.Second))
+			Expect(second.Time).To(BeTemporally("~", first.Add(syncInterval), 3*time.Second))
 		})
 
 		// AC-SCHED-06: cron-based NextScheduledTime advances to next cron tick after each sync.
@@ -174,7 +174,7 @@ var _ = Describe("LosantSync scheduling", func() {
 
 			second := getLosantSync(ctx, name).Status.NextScheduledTime
 			// Next tick for "* * * * *" is ~60s from the previous tick; allow 10s tolerance.
-			Expect(second.Time).To(BeTemporally("~", first.Time.Add(time.Minute), 10*time.Second))
+			Expect(second.Time).To(BeTemporally("~", first.Add(time.Minute), 10*time.Second))
 		})
 
 		// AC-SCHED-08/09/10: controller restart behaviour.

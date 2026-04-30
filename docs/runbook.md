@@ -8,12 +8,18 @@ Operational procedures for the `losant-device` Kubernetes controller running on 
 
 ## Prerequisites
 
+> **Which branch to use**: `main` contains stable tagged releases only. All bug fixes and in-progress work land in `develop` first. If you are doing usability testing or want the latest fixes, use `develop`:
+> ```bash
+> git checkout develop && git pull origin develop
+> ```
+> Switch to `main` only when deploying a specific tagged release (e.g., `git checkout v0.1.0`).
+
 ### Step 1 — Decide your run mode
 
 All subsequent steps branch on this decision. Pick one now:
 
-- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster. Use this for development and local testing.
-- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace. Use this for staging and production.
+- **`make run`** — controller runs as a local process in your terminal; no Deployment or namespace is created in the cluster. Use this for development and local testing. **Limitation**: cannot reach in-cluster Services (e.g., `losant-gea`), so GEA state reporting always fails. Provisioning steps work, but no metrics will be delivered to Losant.
+- **`make deploy`** — controller runs as an in-cluster pod in the `losant-system` namespace. Use this for staging, production, and any end-to-end testing that includes GEA metric reporting. Uses the published image at `ghcr.io/mak3r/losant-device` — no Docker build required.
 
 ### Step 2 — Install or verify the CRD (all modes)
 
@@ -40,12 +46,17 @@ The controller starts in your terminal and connects to the cluster in `~/.kube/c
 **If you chose `make deploy`:**
 
 ```bash
-# Build and push your image first (set IMG to your registry)
-make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
-
-# Deploy controller + GEA to the losant-system namespace
-make deploy IMG=my-registry/losant-device:v0.x.y
+# Deploy controller + GEA using the published image
+make deploy IMG=ghcr.io/mak3r/losant-device:latest
 ```
+
+> Available image tags: https://github.com/mak3r/losant-device/pkgs/container/losant-device
+>
+> If you have modified the controller source and want to test your changes, build and push your own image first:
+> ```bash
+> make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
+> make deploy IMG=my-registry/losant-device:v0.x.y
+> ```
 
 ### Step 4 — Verify the controller is running
 
@@ -67,15 +78,14 @@ kubectl logs -n losant-system deploy/losant-device-controller-manager -f
 These commands apply only when the controller is already running via `make deploy` and you want to update it.
 
 ```bash
-# Build and push the new image
-make docker-build docker-push IMG=my-registry/losant-device:v0.x.y
-
-# Roll out the new image
-make deploy IMG=my-registry/losant-device:v0.x.y
+# Roll out a new published image
+make deploy IMG=ghcr.io/mak3r/losant-device:<new-tag>
 
 # Update CRDs only (no controller restart needed for CRD additions)
 make install
 ```
+
+> If upgrading from a custom-built image, run `make docker-build docker-push IMG=<your-registry>/losant-device:<new-tag>` first, then `make deploy IMG=<your-registry>/losant-device:<new-tag>`.
 
 ---
 
@@ -90,7 +100,7 @@ make install
 2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
 
    ```bash
-   kubectl create secret generic losant-credentials \
+   kubectl create secret generic losant-provisioning-credentials \
      --from-literal=api-token=<application-api-token> \
      -n losant-system
    ```
@@ -105,7 +115,7 @@ make install
    spec:
      applicationID: "<losant-app-id>"
      provisioningSecretRef:
-       name: losant-credentials
+       name: losant-provisioning-credentials
        namespace: losant-system
      clusterName: "my-k3s-cluster"
      region: "us-east-1"
@@ -146,7 +156,7 @@ Each condition has a `reason` and `message` that identify exactly which step fai
    ```
 2. Verify the provisioning secret exists and contains `api-token`:
    ```bash
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
+   kubectl get secret losant-provisioning-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
    ```
 3. Confirm the Losant REST API is reachable from within the cluster:
    ```bash
