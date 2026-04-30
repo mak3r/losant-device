@@ -166,7 +166,7 @@ Uses `github.com/robfig/cron/v3` to compute the next fire time from either `spec
 
 On each scheduled reconcile, `LosantSyncReconciler` executes in order:
 
-1. **Ping** (`lc.Ping`) — verifies the Application API Token via `GET /me`; sets `phase=Degraded` on failure
+1. **Ping** (`lc.Ping`) — verifies the Application API Token via `GET /applications/{id}`; sets `phase=Degraded` on failure
 2. **EnsureClusterDevice** (`lc.EnsureClusterDevice`) — creates or retrieves the Edge Compute device; stores device ID in `Status.ClusterDeviceID`; sets `phase=Degraded` on failure
 3. **EnsureNodeDevice** per node in HealthStore (`lc.EnsureNodeDevice`) — creates or retrieves peripheral devices; sets `phase=Degraded` on first failure
 4. **ReportState cluster** (`gc.ReportState`) — POSTs cluster-level metrics to GEA HTTP endpoint; sets `phase=Degraded` on failure
