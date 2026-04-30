@@ -293,3 +293,127 @@ func TestNon2xxError_Propagated(t *testing.T) {
 		t.Fatal("expected error on 500 response, got nil")
 	}
 }
+
+// --- EnsureNodeDevice: existing device path ---
+
+func TestEnsureNodeDevice_Found(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{Items: []Device{{DeviceID: "existing-node-id", Name: "k8s-node-test-cluster-node-2"}}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	id, err := newTestHTTPClient(srv.URL).EnsureNodeDevice(context.Background(), newTestSpec(), "node-2", "gw-abc")
+	if err != nil {
+		t.Fatalf("EnsureNodeDevice: %v", err)
+	}
+	if id != "existing-node-id" {
+		t.Errorf("deviceID: got %q, want %q", id, "existing-node-id")
+	}
+}
+
+// --- createDevice: recipeID field and empty-deviceId error ---
+
+func TestCreateDevice_WithRecipeID(t *testing.T) {
+	var postBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{})
+	})
+	mux.HandleFunc("POST /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&postBody)
+		writeJSON(w, Device{DeviceID: "recipe-dev-id"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	spec := newTestSpec()
+	spec.DeviceRecipeID = "recipe-xyz"
+	id, err := newTestHTTPClient(srv.URL).EnsureClusterDevice(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("EnsureClusterDevice: %v", err)
+	}
+	if id != "recipe-dev-id" {
+		t.Errorf("deviceID: got %q, want %q", id, "recipe-dev-id")
+	}
+	if postBody["deviceRecipeId"] != "recipe-xyz" {
+		t.Errorf("deviceRecipeId: got %v, want %q", postBody["deviceRecipeId"], "recipe-xyz")
+	}
+}
+
+func TestCreateDevice_EmptyDeviceIDError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{})
+	})
+	mux.HandleFunc("POST /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		// Return a device with empty deviceId — should trigger an error.
+		writeJSON(w, Device{DeviceID: "", Name: "some-name"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := newTestHTTPClient(srv.URL).EnsureClusterDevice(context.Background(), newTestSpec())
+	if err == nil {
+		t.Fatal("expected error when deviceId is empty, got nil")
+	}
+}
+
+// --- tagsFromSpec: RancherURL branch ---
+
+func TestTagsFromSpec_WithRancherURL(t *testing.T) {
+	spec := newTestSpec()
+	spec.RancherURL = "https://rancher.example.com"
+	tags := tagsFromSpec(spec)
+
+	found := false
+	for _, tag := range tags {
+		if tag.Key == "rancherURL" && tag.Value == "https://rancher.example.com" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected rancherURL tag with value %q, got: %v", spec.RancherURL, tags)
+	}
+}
+
+// --- findDeviceByName: invalid JSON response ---
+
+func TestFindDeviceByName_InvalidJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("not-json"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := newTestHTTPClient(srv.URL).EnsureClusterDevice(context.Background(), newTestSpec())
+	if err == nil {
+		t.Fatal("expected error on invalid JSON device list, got nil")
+	}
+}
+
+// --- GetDevice: invalid JSON response ---
+
+func TestGetDevice_InvalidJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices/dev-bad", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("not-json"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := newTestHTTPClient(srv.URL).GetDevice(context.Background(), "app-123", "dev-bad")
+	if err == nil {
+		t.Fatal("expected error on invalid JSON device response, got nil")
+	}
+}

@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 	"github.com/mak3r/losant-device/internal/controller"
@@ -483,6 +484,58 @@ func TestNilHealthStore(t *testing.T) {
 	}
 }
 
+// TestScheduleNotYetDue verifies that the reconciler exits early with a
+// RequeueAfter when NextScheduledTime is still in the future.
+func TestScheduleNotYetDue(t *testing.T) {
+	ls := baseLS("not-yet-due")
+	ls.Status.Phase = losantv1alpha1.PhaseActive
+	ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now().Add(time.Hour)}
+	ml := losant.NewMockClient()
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, mg, monitor.NewHealthStore())
+
+	result, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if result.RequeueAfter <= 0 || result.RequeueAfter > time.Hour {
+		t.Errorf("RequeueAfter: got %v, want (0, 1h]", result.RequeueAfter)
+	}
+	if ml.CallCount() != 0 {
+		t.Errorf("no Losant calls expected when sync not yet due, got %d", ml.CallCount())
+	}
+}
+
+// TestClientConstructionInvalidSecret verifies that when no LosantClient is
+// injected and the provisioning secret lacks the "api-token" key, the
+// reconciler sets Phase=Degraded with reason InvalidSecret.
+func TestClientConstructionInvalidSecret(t *testing.T) {
+	ls := baseLS("bad-secret-keys")
+	ls.Status.Phase = losantv1alpha1.PhaseProvisioning
+	ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now().Add(-time.Second)}
+	// credsSecret has "accessKey"/"accessSecret" but NewHTTPClient expects "api-token".
+	c := buildClient(ls, credsSecret())
+	// Pass nil LosantClient so the reconciler constructs one from the secret.
+	r := newReconciler(c, nil, gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, "LastSyncSucceeded") {
+		t.Error("expected LastSyncSucceeded=False when client construction fails")
+	}
+}
+
 // conditionTrue reports whether a named condition has Status=True.
 func conditionTrue(conds []metav1.Condition, condType string) bool {
 	for _, c := range conds {
@@ -501,4 +554,101 @@ func conditionFalse(conds []metav1.Condition, condType string) bool {
 		}
 	}
 	return false
+}
+
+// buildClientWithInterceptor wraps the fake client with an interceptor so
+// specific API calls can be made to fail in error-path tests.
+func buildClientWithInterceptor(funcs interceptor.Funcs, objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&losantv1alpha1.LosantSync{}).
+		WithInterceptorFuncs(funcs).
+		Build()
+}
+
+// TestGetError verifies that a non-IsNotFound error from r.Get is propagated
+// to the caller rather than swallowed.
+func TestGetError(t *testing.T) {
+	apiErr := errors.New("api server unavailable")
+	c := buildClientWithInterceptor(interceptor.Funcs{
+		Get: func(_ context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*losantv1alpha1.LosantSync); ok {
+				return apiErr
+			}
+			return cl.Get(context.Background(), key, obj, opts...)
+		},
+	}, baseLS("get-err"), credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := r.Reconcile(context.Background(), reqFor("get-err"))
+	if !errors.Is(err, apiErr) {
+		t.Errorf("expected api server error, got: %v", err)
+	}
+}
+
+// TestSetDegraded_StatusUpdateFails verifies that a Status().Update failure
+// inside setDegraded is surfaced as a reconcile error rather than silently dropped.
+func TestSetDegraded_StatusUpdateFails(t *testing.T) {
+	updateErr := errors.New("etcd write failed")
+
+	// Pre-set Phase to Provisioning with an already-elapsed NextScheduledTime so
+	// the reconciler skips the first-reconcile preamble and enters the sync phase
+	// where Ping fails, triggering setDegraded, whose Status().Update then fails.
+	ls := baseLS("degrade-update-fail")
+	ls.Status.Phase = losantv1alpha1.PhaseProvisioning
+	ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now().Add(-time.Second)}
+
+	ml := losant.NewMockClient()
+	ml.PingFunc = func(_ context.Context) error { return errors.New("ping failed") }
+
+	c := buildClientWithInterceptor(interceptor.Funcs{
+		SubResourceUpdate: func(_ context.Context, _ client.Client, subResource string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+			if subResource == "status" {
+				if _, ok := obj.(*losantv1alpha1.LosantSync); ok {
+					return updateErr
+				}
+			}
+			return nil
+		},
+	}, ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if !errors.Is(err, updateErr) {
+		t.Errorf("expected etcd write error from setDegraded, got: %v", err)
+	}
+}
+
+// TestNodeDeviceIDEmpty verifies that when EnsureNodeDevice returns an empty
+// device ID (with nil error), the GEA state report for that node is skipped but
+// the sync cycle still completes successfully with Phase=Active.
+func TestNodeDeviceIDEmpty(t *testing.T) {
+	ls := baseLS("empty-device-id")
+	hs := monitor.NewHealthStore()
+	hs.Update(monitor.ClusterHealth{}, map[string]monitor.NodeHealth{"node-1": {}})
+	ml := losant.NewMockClient()
+	ml.EnsureNodeDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec, _, _ string) (string, error) {
+		return "", nil // empty ID, no error
+	}
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, mg, hs)
+
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active (node GEA skip is non-fatal)", got.Status.Phase)
+	}
+	// GEA ReportState should be called only once (cluster), not for the node with empty ID.
+	if len(mg.Calls) != 1 {
+		t.Errorf("ReportState calls: got %d, want 1 (node skipped)", len(mg.Calls))
+	}
 }

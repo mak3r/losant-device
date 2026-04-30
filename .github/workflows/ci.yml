@@ -59,6 +59,22 @@ jobs:
       - name: Build
         run: go build ./...
 
+  dockerfile-go-version:
+    name: Dockerfile Go version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Dockerfile builder matches go.mod
+        run: |
+          GOMOD_VER=$(grep '^go ' go.mod | awk '{print $2}')
+          DOCKERFILE_VER=$(grep '^FROM golang:' Dockerfile | sed 's/FROM golang:\([^ ]*\).*/\1/')
+          echo "go.mod requires: $GOMOD_VER"
+          echo "Dockerfile uses: $DOCKERFILE_VER"
+          if [ "$GOMOD_VER" != "$DOCKERFILE_VER" ]; then
+            echo "ERROR: Dockerfile golang version ($DOCKERFILE_VER) does not match go.mod ($GOMOD_VER)"
+            exit 1
+          fi
+
   helm-lint:
     name: Helm Lint
     runs-on: ubuntu-latest

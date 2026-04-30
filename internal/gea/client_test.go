@@ -209,3 +209,40 @@ func TestReportState_Success_ReturnsNil(t *testing.T) {
 		t.Fatalf("ReportState: unexpected error: %v", err)
 	}
 }
+
+// TestReportState_MarshalError verifies that an un-serializable attribute value
+// (channel type) causes ReportState to return a marshal error without making an
+// HTTP call.
+func TestReportState_MarshalError(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	payload := StatePayload{
+		DeviceID:   "dev-bad",
+		Attributes: map[string]interface{}{"ch": make(chan int)}, // channels are not JSON-serializable
+	}
+	if err := newTestHTTPClient(srv.URL).ReportState(context.Background(), payload); err == nil {
+		t.Fatal("expected marshal error, got nil")
+	}
+	if callCount != 0 {
+		t.Errorf("expected no HTTP calls on marshal error, got %d", callCount)
+	}
+}
+
+// TestReportState_NetworkError verifies that a connection failure (server closed
+// before the call) surfaces as a recognisable error.
+func TestReportState_NetworkError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.Close() // close immediately so the POST will fail
+
+	payload := StatePayload{DeviceID: "dev-net", Attributes: map[string]interface{}{"x": 1}}
+	if err := newTestHTTPClient(srv.URL).ReportState(context.Background(), payload); err == nil {
+		t.Fatal("expected network error, got nil")
+	}
+}
