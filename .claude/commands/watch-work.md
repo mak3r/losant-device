@@ -170,7 +170,12 @@ For the selected item:
 
    **Do not comment with a commit SHA or close the issue until the handoff action is complete.**
 
-6. **Update the issue/PR:** comment with a one-line summary of what was done and the verified commit SHA.
+6. **Update the issue/PR:** comment must include all of the following — do not summarize or paraphrase, paste the actual output:
+   - Output of `git log --oneline -1` (proves the commit exists with its real message and SHA)
+   - PR URL (from `gh pr create` output or `gh pr view --json url --jq '.url'`)
+   - For any file-level fix: output of a `grep` or `head` command confirming the change is present in the file (e.g. `grep '^FROM golang:' Dockerfile`)
+
+   Fabricated or assumed output will be caught by the merge-manager. If you cannot produce real output, the commit did not happen — do not close the issue.
 
 ---
 
@@ -183,7 +188,7 @@ After completing an item (or finding an empty queue):
 **Watch mode:**
 - Is `now < end_time`?
   - **Yes and work was just completed**: immediately return to Step 2 to check for more work.
-  - **Yes and queue was empty**: call `ScheduleWakeup` with `delaySeconds: 270`, `reason: "Polling for new work for <persona>"`, `prompt: "/watch-work <persona> until:<end_time_iso>"`
+  - **Yes and queue was empty**: call `ScheduleWakeup` with `delaySeconds: 270`, `reason: "Polling for new work for <persona>"`, `prompt: "Resume watch-work: you are the <persona> persona. Continue from Step 2 — scan for open issues and PRs, pick the highest-priority item, do the work, then loop. Session ends at <end_time_iso>. Do not use slash commands; invoke the watch-work skill directly via the Skill tool with skill name 'watch-work' and args '<persona> until:<end_time_iso>'."`
   - **No**: print `Session complete for <persona>. Items completed this session: <N>.` and stop.
 
 ---
