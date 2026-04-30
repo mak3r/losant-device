@@ -40,17 +40,29 @@ gh issue list \
 ```
 
 **Open PRs needing this persona's attention:**
-```bash
-gh pr list \
-  --state open \
-  --json number,title,headRefName,reviewDecision,comments,requestedReviewers \
-  --limit 30 \
-  --jq '[.[] | select(
-      (.headRefName | startswith("feature/developer/")) or
-      (.headRefName | startswith("persona/")) or
-      (.requestedReviewers | length > 0)
-  )] | .[] | "#\(.number)  \(.title)  [\(.headRefName)]  review:\(.reviewDecision // "PENDING")  comments:\(.comments | length)"'
-```
+
+> If persona is `merge-manager`: fetch ALL open PRs targeting `develop` — the merge-manager reviews every PR, not just ones it owns.
+> ```bash
+> gh pr list \
+>   --state open \
+>   --base develop \
+>   --json number,title,headRefName,reviewDecision,statusCheckRollup,comments \
+>   --limit 30 \
+>   --jq '.[] | "#\(.number)  \(.title)  [\(.headRefName)]  review:\(.reviewDecision // "PENDING")  ci:\(if (.statusCheckRollup // [] | length) == 0 then "unknown" elif (.statusCheckRollup | all(.[]; .state == "SUCCESS")) then "green" else "failing" end)  comments:\(.comments | length)"'
+> ```
+
+> All other personas: fetch only PRs on their branch or where they are a requested reviewer.
+> ```bash
+> gh pr list \
+>   --state open \
+>   --json number,title,headRefName,reviewDecision,comments,requestedReviewers \
+>   --limit 30 \
+>   --jq '[.[] | select(
+>       (.headRefName | startswith("feature/developer/")) or
+>       (.headRefName | startswith("persona/")) or
+>       (.requestedReviewers | length > 0)
+>   )] | .[] | "#\(.number)  \(.title)  [\(.headRefName)]  review:\(.reviewDecision // "PENDING")  comments:\(.comments | length)"'
+> ```
 
 Print the results as a brief queue, then proceed to Step 3.
 
@@ -58,7 +70,17 @@ Print the results as a brief queue, then proceed to Step 3.
 
 ## Step 3 — Pick the Highest-Priority Item
 
-Score every item in the queue and pick the highest. In case of a tie, prefer the oldest `updatedAt`.
+**If persona is `merge-manager`**, use this priority order:
+
+| Priority | Condition |
+|---|---|
+| 1 | PR with `ci:green` and `review:APPROVED` — ready to merge now |
+| 2 | PR with `ci:failing` — create or update a blocking issue labeled `persona/<owner>` and `type/bug` |
+| 3 | PR with open `type/security` issues on its branch — comment that it is blocked |
+| 4 | PR with `review:CHANGES_REQUESTED` — already handled by the owning persona; add a comment if stale |
+| 5 | PR with `review:PENDING` and `ci:green` — leave a review |
+
+**All other personas**, score every item and pick the highest. In case of a tie, prefer the oldest `updatedAt`.
 
 | Priority | Condition |
 |---|---|
