@@ -8,6 +8,15 @@ rules:
   - ""
   resources:
   - events
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - nodes
   - persistentvolumeclaims
   - pods
@@ -21,6 +30,8 @@ rules:
   - secrets
   verbs:
   - get
+  - list
+  - watch
 - apiGroups:
   - apps
   resources:
