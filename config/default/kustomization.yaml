@@ -4,6 +4,6 @@ kind: Kustomization
 namespace: losant-system
 
 resources:
-  - pvc.yaml
-  - deployment.yaml
-  - service.yaml
+- ../rbac
+- ../manager
+- ../gea
