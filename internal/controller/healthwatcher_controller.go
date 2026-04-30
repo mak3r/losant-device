@@ -48,7 +48,7 @@ type HealthWatcherReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch
-// +kubebuilder:rbac:groups=core,resources=events,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;get;list;patch;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch
 
 // Reconcile is triggered by changes to any watched resource. It re-computes
