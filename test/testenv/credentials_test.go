@@ -117,6 +117,83 @@ func TestLoadCredentials_MissingReturnsIncomplete(t *testing.T) {
 	_ = ok
 }
 
+// TestLoadCredentials_FromFile verifies that LoadCredentials falls back to the
+// local credentials file when env vars are absent. Skipped if the file already
+// exists to avoid overwriting real developer credentials.
+func TestLoadCredentials_FromFile(t *testing.T) {
+	for _, k := range []string{
+		"LOSANT_APPLICATION_ID", "LOSANT_ACCESS_KEY",
+		"LOSANT_ACCESS_SECRET", "LOSANT_CLUSTER_DEVICE_ID",
+	} {
+		t.Setenv(k, "")
+	}
+
+	path := envFilePath()
+	if _, err := os.Stat(path); err == nil {
+		t.Skip("env.test.local exists — skipping to protect real credentials")
+	}
+
+	content := "LOSANT_APPLICATION_ID=file-app\nLOSANT_ACCESS_KEY=file-key\nLOSANT_ACCESS_SECRET=file-secret\nLOSANT_CLUSTER_DEVICE_ID=file-dev\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write credentials file: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	creds, ok := LoadCredentials()
+	if !ok {
+		t.Fatal("expected complete credentials loaded from file")
+	}
+	if creds.ApplicationID != "file-app" {
+		t.Errorf("ApplicationID: got %q, want %q", creds.ApplicationID, "file-app")
+	}
+	if creds.AccessKey != "file-key" {
+		t.Errorf("AccessKey: got %q, want %q", creds.AccessKey, "file-key")
+	}
+	if creds.AccessSecret != "file-secret" {
+		t.Errorf("AccessSecret: got %q, want %q", creds.AccessSecret, "file-secret")
+	}
+	if creds.ClusterDeviceID != "file-dev" {
+		t.Errorf("ClusterDeviceID: got %q, want %q", creds.ClusterDeviceID, "file-dev")
+	}
+}
+
+// TestLoadCredentials_EnvOverridesFile verifies that env vars take precedence
+// over file values: a field set in the env is NOT overwritten by the file.
+func TestLoadCredentials_EnvOverridesFile(t *testing.T) {
+	t.Setenv("LOSANT_APPLICATION_ID", "env-app")
+	t.Setenv("LOSANT_ACCESS_KEY", "")
+	t.Setenv("LOSANT_ACCESS_SECRET", "")
+	t.Setenv("LOSANT_CLUSTER_DEVICE_ID", "")
+
+	path := envFilePath()
+	if _, err := os.Stat(path); err == nil {
+		t.Skip("env.test.local exists — skipping to protect real credentials")
+	}
+
+	content := "LOSANT_APPLICATION_ID=file-app\nLOSANT_ACCESS_KEY=file-key\nLOSANT_ACCESS_SECRET=file-secret\nLOSANT_CLUSTER_DEVICE_ID=file-dev\n"
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write credentials file: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	creds, ok := LoadCredentials()
+	if !ok {
+		t.Fatal("expected complete credentials")
+	}
+	if creds.ApplicationID != "env-app" {
+		t.Errorf("ApplicationID: got %q, want %q (env should take precedence)", creds.ApplicationID, "env-app")
+	}
+	if creds.AccessKey != "file-key" {
+		t.Errorf("AccessKey: got %q, want %q (should come from file)", creds.AccessKey, "file-key")
+	}
+}
+
 // writeTempFile creates a temp *os.File with content, for use in tests.
 func writeTempFile(t *testing.T, content string) *os.File {
 	t.Helper()
