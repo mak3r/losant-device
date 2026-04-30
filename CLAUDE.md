@@ -96,14 +96,33 @@ After completing work that unblocks another persona, choose one of:
 
 Without a handoff, the queue-based `watch-work` model breaks — agents only pick up issues labeled for their persona.
 
+### Re-label vs. new issue decision rule
+
+**Re-label** when the next persona is doing a second stage of the same change (the existing issue title still describes the work). **Open a new issue** when the next persona's work is distinct or additive (the existing title would not describe it).
+
+Decision shortcut: "Can the existing issue title describe what the next persona must do?" If yes → re-label. If no → new issue.
+
+Examples:
+- Security approves RBAC change → developer adds marker: **re-label** (same change, two stages)
+- Merge-manager merges PR → docs updates README: **new issue** (different scope)
+
 ### Security → Developer handoff (example)
 
 When the security persona approves an RBAC change:
 1. Update `config/rbac/role.yaml` and commit to `persona/security`
 2. Comment on the issue with the approved verbs and the exact `// +kubebuilder:rbac` markers the developer must add
-3. **Re-label** the issue from `persona/security` to `persona/developer` — or open a new `persona/developer` issue — so the developer's `watch-work` queue picks it up
+3. **Re-label** the issue from `persona/security` to `persona/developer` — so the developer's `watch-work` queue picks it up
 
 Step 3 is mandatory. Without it, the developer never sees the work.
+
+## Definition of Done
+
+Before closing any issue or PR, every persona must verify all of the following:
+
+1. Changes are within this persona's designated file scope (from the table in **Personas and Branch Ownership**).
+2. Work is committed; where applicable, tests pass (`make test` for Go changes; `make manifests && git diff --exit-code config/rbac/role.yaml` for manifest changes).
+3. The issue or PR has a one-line summary comment linking the commit SHA.
+4. Handoff is complete — if this work unblocks another persona, that persona's queue has been updated (re-labeled issue or new issue with explicit instructions).
 
 ## Standard Commands
 
