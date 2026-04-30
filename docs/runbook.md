@@ -47,10 +47,10 @@ The controller starts in your terminal and connects to the cluster in `~/.kube/c
 
 ```bash
 # Deploy controller + GEA using the published image
-make deploy IMG=ghcr.io/mak3r/losant-device:v0.1.0-alpha.2
+make deploy IMG=ghcr.io/mak3r/losant-device:v0.1.0-alpha.4
 ```
 
-> Current release: `v0.1.0-alpha.2`. All available tags: https://github.com/mak3r/losant-device/pkgs/container/losant-device
+> Current release: `v0.1.0-alpha.4`. All available tags: https://github.com/mak3r/losant-device/pkgs/container/losant-device
 >
 > If you have modified the controller source and want to test your changes, build and push your own image first:
 > ```bash
