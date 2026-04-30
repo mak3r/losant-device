@@ -93,8 +93,7 @@ func ensureTestNamespaceAndSecret(ctx context.Context) {
 			Namespace: e2eNamespace,
 		},
 		StringData: map[string]string{
-			"accessKey":    "e2e-placeholder-key",
-			"accessSecret": "e2e-placeholder-secret",
+			"api-token": "e2e-placeholder-token",
 		},
 	}
 	err = k8sClient.Create(ctx, secret)
