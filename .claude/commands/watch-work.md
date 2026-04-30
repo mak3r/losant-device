@@ -12,6 +12,12 @@ Parse `$ARGUMENTS` as one of:
 
 Valid persona names: `developer`, `test-engineer`, `security`, `qa`, `gitops-manager`, `docs`, `merge-manager`, `product-designer`
 
+If the persona name is not in that list, stop immediately and print:
+```
+Unknown persona: "<name>". Valid personas: developer, test-engineer, security, qa, gitops-manager, docs, merge-manager, product-designer
+```
+Do not proceed further.
+
 On first call with `<minutes>`, compute `end_time = now + <minutes> minutes` as ISO 8601 UTC. Subsequent self-scheduled wake-ups pass `until:<end_time>` to preserve the deadline.
 
 ---
