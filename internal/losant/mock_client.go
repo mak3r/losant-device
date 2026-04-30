@@ -34,7 +34,7 @@ type MockClient struct {
 
 	PingFunc                func(ctx context.Context) error
 	EnsureClusterDeviceFunc func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (string, error)
-	EnsureNodeDeviceFunc    func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (string, error)
+	EnsureNodeDeviceFunc    func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error)
 	UpdateDeviceTagsFunc    func(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
 	GetDeviceFunc           func(ctx context.Context, applicationID, deviceID string) (*Device, error)
 
@@ -53,8 +53,9 @@ type EnsureClusterDeviceCall struct {
 
 // EnsureNodeDeviceCall records one invocation of EnsureNodeDevice.
 type EnsureNodeDeviceCall struct {
-	Spec     losantv1alpha1.LosantSyncSpec
-	NodeName string
+	Spec      losantv1alpha1.LosantSyncSpec
+	NodeName  string
+	GatewayID string
 }
 
 // UpdateDeviceTagsCall records one invocation of UpdateDeviceTags.
@@ -89,7 +90,7 @@ func (m *MockClient) SetError(err error) {
 	m.EnsureClusterDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec) (string, error) {
 		return "", err
 	}
-	m.EnsureNodeDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec, _ string) (string, error) {
+	m.EnsureNodeDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec, _, _ string) (string, error) {
 		return "", err
 	}
 	m.UpdateDeviceTagsFunc = func(_ context.Context, _, _ string, _ map[string]string) error {
@@ -154,14 +155,14 @@ func (m *MockClient) EnsureClusterDevice(ctx context.Context, spec losantv1alpha
 }
 
 // EnsureNodeDevice implements LosantClient.
-func (m *MockClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (string, error) {
+func (m *MockClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error) {
 	m.mu.Lock()
-	m.EnsureNodeDeviceCalls = append(m.EnsureNodeDeviceCalls, EnsureNodeDeviceCall{Spec: spec, NodeName: nodeName})
+	m.EnsureNodeDeviceCalls = append(m.EnsureNodeDeviceCalls, EnsureNodeDeviceCall{Spec: spec, NodeName: nodeName, GatewayID: gatewayID})
 	fn := m.EnsureNodeDeviceFunc
 	m.mu.Unlock()
 
 	if fn != nil {
-		return fn(ctx, spec, nodeName)
+		return fn(ctx, spec, nodeName, gatewayID)
 	}
 	return "mock-node-" + nodeName, nil
 }
