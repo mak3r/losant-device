@@ -1,5 +1,7 @@
 Adopt the persona named in $ARGUMENTS and work through open issues and PRs until the session ends or no work remains.
 
+**Autonomous operation**: Do not ask for confirmation at any point. Invoking this skill is authorization to do all the work. Never ask "want me to proceed?", "shall I work on this?", "should I fetch the issue?", or any similar question. Scan → pick → act, without pausing.
+
 ## Argument Parsing
 
 Parse `$ARGUMENTS` as one of:
@@ -105,6 +107,8 @@ If the queue is empty, go to Step 5.
 ---
 
 ## Step 4 — Do the Work
+
+Do not announce the item and wait. Fetch details and begin immediately.
 
 For the selected item:
 
