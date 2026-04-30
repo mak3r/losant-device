@@ -8,6 +8,12 @@ Operational procedures for the `losant-device` Kubernetes controller running on 
 
 ## Prerequisites
 
+> **Which branch to use**: `main` contains stable tagged releases only. All bug fixes and in-progress work land in `develop` first. If you are doing usability testing or want the latest fixes, use `develop`:
+> ```bash
+> git checkout develop && git pull origin develop
+> ```
+> Switch to `main` only when deploying a specific tagged release (e.g., `git checkout v0.1.0`).
+
 ### Step 1 — Decide your run mode
 
 All subsequent steps branch on this decision. Pick one now:
@@ -94,7 +100,7 @@ make install
 2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
 
    ```bash
-   kubectl create secret generic losant-credentials \
+   kubectl create secret generic losant-provisioning-credentials \
      --from-literal=api-token=<application-api-token> \
      -n losant-system
    ```
@@ -109,7 +115,7 @@ make install
    spec:
      applicationID: "<losant-app-id>"
      provisioningSecretRef:
-       name: losant-credentials
+       name: losant-provisioning-credentials
        namespace: losant-system
      clusterName: "my-k3s-cluster"
      region: "us-east-1"
@@ -150,7 +156,7 @@ Each condition has a `reason` and `message` that identify exactly which step fai
    ```
 2. Verify the provisioning secret exists and contains `api-token`:
    ```bash
-   kubectl get secret losant-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
+   kubectl get secret losant-provisioning-credentials -n losant-system -o jsonpath='{.data.api-token}' | base64 -d
    ```
 3. Confirm the Losant REST API is reachable from within the cluster:
    ```bash
