@@ -170,7 +170,12 @@ For the selected item:
 
    **Do not comment with a commit SHA or close the issue until the handoff action is complete.**
 
-6. **Update the issue/PR:** comment with a one-line summary of what was done and the verified commit SHA.
+6. **Update the issue/PR:** comment must include all of the following — do not summarize or paraphrase, paste the actual output:
+   - Output of `git log --oneline -1` (proves the commit exists with its real message and SHA)
+   - PR URL (from `gh pr create` output or `gh pr view --json url --jq '.url'`)
+   - For any file-level fix: output of a `grep` or `head` command confirming the change is present in the file (e.g. `grep '^FROM golang:' Dockerfile`)
+
+   Fabricated or assumed output will be caught by the merge-manager. If you cannot produce real output, the commit did not happen — do not close the issue.
 
 ---
 
