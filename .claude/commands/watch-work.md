@@ -146,6 +146,17 @@ For the selected item:
    - If you modified manifests: `make manifests && git diff --exit-code config/rbac/role.yaml`
    - Docs/YAML changes: no build step required
 
+4b. **Handoff check** — before committing, ask: does completing this work make another persona's task available that was not visible before? Common examples:
+   - Security approves RBAC change → developer can now add the marker
+   - Developer completes implementation → test-engineer can now write tests
+   - PR is ready and tests pass → merge-manager can review
+
+   If yes, execute the handoff as part of this work item (not as a follow-on):
+   - Re-label the current issue to `persona/<next>` and comment with what was done and exactly what the next persona must do, OR
+   - Create a new `persona/<next>` issue with explicit instructions
+
+   **The handoff action is a required deliverable.** Do not close or move past this item until handoff is complete.
+
 5. **Commit** using conventional commit style:
    ```
    <type>(<scope>): <description>
