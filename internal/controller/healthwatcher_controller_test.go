@@ -18,6 +18,7 @@ package controller_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -26,6 +27,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/mak3r/losant-device/internal/controller"
 	"github.com/mak3r/losant-device/internal/monitor"
@@ -35,6 +37,14 @@ func buildWatcherClient(objs ...client.Object) client.Client {
 	return fake.NewClientBuilder().
 		WithScheme(testScheme).
 		WithObjects(objs...).
+		Build()
+}
+
+func buildWatcherClientWithInterceptor(funcs interceptor.Funcs, objs ...client.Object) client.Client {
+	return fake.NewClientBuilder().
+		WithScheme(testScheme).
+		WithObjects(objs...).
+		WithInterceptorFuncs(funcs).
 		Build()
 }
 
@@ -261,5 +271,70 @@ func TestHealthWatcher_EmptyCluster(t *testing.T) {
 	_, err := r.Reconcile(context.Background(), ctrl.Request{})
 	if err != nil {
 		t.Errorf("expected no error for empty cluster, got: %v", err)
+	}
+}
+
+// listErrFor returns an interceptor.Funcs that fails the List call for the
+// given object list type and delegates all other calls to the underlying client.
+func listErrFor[T client.ObjectList](listErr error) interceptor.Funcs {
+	return interceptor.Funcs{
+		List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if _, ok := list.(T); ok {
+				return listErr
+			}
+			return cl.List(ctx, list, opts...)
+		},
+	}
+}
+
+// TestHealthWatcher_ListNodesError verifies that a failure to list Nodes is
+// surfaced as a reconcile error.
+func TestHealthWatcher_ListNodesError(t *testing.T) {
+	listErr := errors.New("nodes list failed")
+	c := buildWatcherClientWithInterceptor(listErrFor[*corev1.NodeList](listErr))
+	r, _ := newWatcherReconciler(c)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{})
+	if !errors.Is(err, listErr) {
+		t.Errorf("expected node list error, got: %v", err)
+	}
+}
+
+// TestHealthWatcher_ListPodsError verifies that a failure to list Pods is
+// surfaced as a reconcile error.
+func TestHealthWatcher_ListPodsError(t *testing.T) {
+	listErr := errors.New("pods list failed")
+	c := buildWatcherClientWithInterceptor(listErrFor[*corev1.PodList](listErr))
+	r, _ := newWatcherReconciler(c)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{})
+	if !errors.Is(err, listErr) {
+		t.Errorf("expected pod list error, got: %v", err)
+	}
+}
+
+// TestHealthWatcher_ListPVCsError verifies that a failure to list
+// PersistentVolumeClaims is surfaced as a reconcile error.
+func TestHealthWatcher_ListPVCsError(t *testing.T) {
+	listErr := errors.New("pvcs list failed")
+	c := buildWatcherClientWithInterceptor(listErrFor[*corev1.PersistentVolumeClaimList](listErr))
+	r, _ := newWatcherReconciler(c)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{})
+	if !errors.Is(err, listErr) {
+		t.Errorf("expected pvc list error, got: %v", err)
+	}
+}
+
+// TestHealthWatcher_ListEventsError verifies that a failure to list Events is
+// surfaced as a reconcile error.
+func TestHealthWatcher_ListEventsError(t *testing.T) {
+	listErr := errors.New("events list failed")
+	c := buildWatcherClientWithInterceptor(listErrFor[*corev1.EventList](listErr))
+	r, _ := newWatcherReconciler(c)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{})
+	if !errors.Is(err, listErr) {
+		t.Errorf("expected event list error, got: %v", err)
 	}
 }
