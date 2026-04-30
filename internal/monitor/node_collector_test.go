@@ -117,6 +117,15 @@ func TestCollectNodeHealth_ZeroCapacity(t *testing.T) {
 	}
 }
 
+func TestRequestPct_AllocatableExceedsCapacity(t *testing.T) {
+	// When allocatable > capacity the pct is negative; clamp returns 0.
+	alloc := resource.MustParse("1200m")
+	cap := resource.MustParse("1000m")
+	if got := requestPct(alloc, cap); got != 0 {
+		t.Errorf("requestPct when alloc > cap: got %f, want 0", got)
+	}
+}
+
 func TestCollectNodeHealth_ResourcePct(t *testing.T) {
 	// allocatable=500m out of 1000m means 50% requested
 	node := makeNode("n5", readyConditions(), "500m", "1000m", "512Mi", "1024Mi")

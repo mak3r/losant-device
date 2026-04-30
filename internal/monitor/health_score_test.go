@@ -141,6 +141,12 @@ func TestComputeClusterHealthScore_NoNodes(t *testing.T) {
 	}
 }
 
+func TestClamp_AboveMax(t *testing.T) {
+	if got := clamp(150, 0, 100); got != 100 {
+		t.Errorf("clamp(150, 0, 100): got %d, want 100", got)
+	}
+}
+
 func TestComputeClusterHealthScore_ClampedToZero(t *testing.T) {
 	cluster := ClusterHealth{
 		CrashLoopPods:  50,
