@@ -104,6 +104,12 @@ deploy: manifests ## Deploy the controller to the cluster with image substitutio
 undeploy: ## Remove the controller from the cluster
 	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: reset
+reset: ## Full teardown: undeploy operator, uninstall CRDs, delete losant-system namespace (idempotent)
+	$(MAKE) undeploy ignore-not-found=true
+	$(MAKE) uninstall ignore-not-found=true
+	kubectl delete namespace losant-system --ignore-not-found=true
+
 ##@ Dependencies
 
 LOCALBIN ?= $(shell pwd)/bin
