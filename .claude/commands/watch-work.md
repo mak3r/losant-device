@@ -12,11 +12,11 @@ Parse `$ARGUMENTS` as one of:
 | `<persona> <minutes>` | Work continuously, polling every ~4.5 min for `<minutes>` minutes |
 | `<persona> until:<iso_timestamp>` | Work continuously until absolute deadline (used by self-scheduling wake-ups) |
 
-Valid persona names: `developer`, `test-engineer`, `security`, `qa`, `gitops-manager`, `docs`, `merge-manager`, `product-designer`
+Valid persona names: `developer`, `test-engineer`, `security`, `qa`, `gitops-manager`, `docs`, `merge-manager`, `product-designer`, `triage`
 
 If the persona name is not in that list, stop immediately and print:
 ```
-Unknown persona: "<name>". Valid personas: developer, test-engineer, security, qa, gitops-manager, docs, merge-manager, product-designer
+Unknown persona: "<name>". Valid personas: developer, test-engineer, security, qa, gitops-manager, docs, merge-manager, product-designer, triage
 ```
 Do not proceed further.
 
@@ -36,6 +36,8 @@ You ARE the `<persona>`. Read `CLAUDE.md` now to confirm:
 - **developer**: Valid starting states are `develop` or `feature/developer/*`. If on `develop`, you will create a feature branch in Step 4 when picking up an issue. If on `feature/developer/<name>`, continue work on that branch. If on any other branch, stop and tell the user.
 - **test-engineer**: Valid starting states are `develop`, `feature/developer/*`, or `persona/test-engineer`. You will select the correct branch in Step 2 based on available work. If on any other branch, stop and tell the user.
 - **All other personas**: The current branch must match your persona's designated branch exactly. If not, tell the user which branch to switch to and stop.
+
+If persona is `triage`: print "The triage persona is invoked via /triage, not /watch-work. Run /triage instead." and stop.
 
 ---
 
