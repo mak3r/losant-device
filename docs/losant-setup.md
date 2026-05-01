@@ -9,6 +9,8 @@ One-time configuration steps required before deploying the operator.
 
 > **Bootstrap constraint**: The cluster Edge Compute device (Step 2) must exist in Losant **before** the operator starts. The controller discovers and manages peripheral (node) devices automatically, but the cluster-level Edge Compute device must be pre-provisioned manually.
 
+> **Ordering note**: Steps 1–3 (Application, Edge Compute device, and GEA access key) can be completed entirely within the Losant UI — no running cluster is required. However, Step 4 step 13 (deploying the Edge Workflow to the device) requires the GEA pod to already be running and connected to Losant. Complete [docs/deployment.md](deployment.md) to deploy the operator and GEA before attempting that step.
+
 ---
 
 ## Step 1: Create a Losant Application
@@ -150,6 +152,11 @@ Because `deviceId` is included in every POST body, a single workflow handles bot
     > The controller only checks the HTTP status code; the response body is ignored. `{}` is a valid minimal JSON body that satisfies the required field.
 
 ### Deploying the workflow
+
+> **Prerequisite before step 13**: The GEA pod must be deployed to the cluster and show **Online** status in Losant before the workflow deployment will succeed. If you attempt to deploy while the device has never connected, Losant will show:
+> > "Some of your selected devices have an agent version lower than the target version for this deployment."
+>
+> This error means the GEA has not yet registered an agent version with Losant — it has not connected. Complete [docs/deployment.md](deployment.md) first, then return here.
 
 12. Save the workflow
 13. Click **Deploy** to push it to the Edge Compute device
