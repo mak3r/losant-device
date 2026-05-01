@@ -200,6 +200,109 @@ kubectl patch losantsync my-cluster --type=merge -p '{"spec":{"suspend":false}}'
 
 ---
 
+## GEA Connectivity Troubleshooting
+
+The controller logs repeated errors like the following when it cannot reach the GEA pod:
+
+```
+ERROR  failed to report cluster state to GEA  {"error": "...connection refused"}
+```
+
+`kubectl get losantsync my-cluster -o yaml` will also show `phase: Degraded` and a condition:
+
+```yaml
+- type: GEAReachable
+  status: "False"
+  reason: GEAUnreachable
+  message: "connection refused"
+```
+
+### Step 1 — Check GEA pod status
+
+```bash
+kubectl get pods -n losant-system
+```
+
+Look for a pod whose name starts with `losant-gea-`. Expected status is `Running` with all containers ready. If the pod is in `CrashLoopBackOff`, `ImagePullBackOff`, `Pending`, or `Error`, proceed to the relevant cause below.
+
+### Step 2 — Check GEA pod logs
+
+```bash
+kubectl logs -n losant-system deploy/losant-gea
+```
+
+Look for MQTT connection errors, missing environment variables, or file-not-found messages pointing to a missing Secret or PVC mount.
+
+### Step 3 — Check service endpoints
+
+If the pod is running but the controller still cannot reach it, verify the Service has populated endpoints:
+
+```bash
+kubectl get endpoints -n losant-system losant-gea
+```
+
+Expected output shows at least one endpoint IP under `ENDPOINTS`. If the column shows `<none>`, the pod's labels do not match the Service selector — check `kubectl get pod -n losant-system --show-labels` against `kubectl get svc -n losant-system losant-gea -o yaml`.
+
+### Common causes and recovery steps
+
+**Image pull failure (`ImagePullBackOff` or `ErrImagePull`)**
+
+```bash
+kubectl describe pod -n losant-system <gea-pod-name>
+```
+
+Look for `Failed to pull image` in the Events section. Verify the image tag exists in the registry. Correct the tag in the GEA Deployment or Helm values, then apply the updated manifest.
+
+**Missing Secret**
+
+The GEA pod requires a Secret containing the Losant Edge Compute access key and secret. Check whether it exists:
+
+```bash
+kubectl get secret -n losant-system losant-gea-credentials
+```
+
+If missing, create it (see [docs/losant-setup.md](losant-setup.md) for the required fields), then delete and allow the pod to restart:
+
+```bash
+kubectl delete pod -n losant-system -l app=losant-gea
+```
+
+**Missing PVC**
+
+If the GEA pod mounts a PersistentVolumeClaim for its local datastore and the PVC is not bound:
+
+```bash
+kubectl get pvc -n losant-system
+```
+
+If the PVC is in `Pending` state, describe it to see why:
+
+```bash
+kubectl describe pvc -n losant-system <pvc-name>
+```
+
+On k3s, the default `local-path` StorageClass provisions PVCs lazily (on first pod mount). If the node has no available local-path provisioner pod, the PVC will stay `Pending` and the GEA pod will not start.
+
+**CrashLoopBackOff**
+
+```bash
+kubectl describe pod -n losant-system <gea-pod-name>
+```
+
+Check the `Last State` section for the exit code, and the Events section for OOM kills or liveness probe failures. Review logs from the previous container run:
+
+```bash
+kubectl logs -n losant-system <gea-pod-name> --previous
+```
+
+Fix the underlying cause (bad config, missing env var, or resource limit too low), then delete the pod to allow a clean restart:
+
+```bash
+kubectl delete pod -n losant-system -l app=losant-gea
+```
+
+---
+
 ## Suspending / Resuming Sync
 
 ```bash
