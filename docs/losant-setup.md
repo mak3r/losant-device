@@ -34,11 +34,26 @@ This device represents the cluster in Losant. Its credentials are used by the GE
    region       = <your-region>
    health_status = provisioning
    ```
-5. Under **Attributes**, add these (data type: `number` for all):
+
+   > **Tags vs. Attributes**: Losant *tags* are device metadata used for filtering and search — they are not time-series data. Losant *attributes* store state values reported over time (what the controller POSTs on every sync). `health_status` appears as both: a tag that holds the initial provisioning state and an attribute that receives ongoing string state updates from the controller. You must create it in the Attributes list below so the controller's state reports are accepted.
+
+5. Under **Attributes**, add these grouped by type:
+
+   **Number** (data type: `number`):
    ```
    total_nodes, ready_nodes, unhealthy_nodes
    total_pods, running_pods, failed_pods, pending_pods, crashloop_pods
-   degraded_pvcs, coredns_healthy, event_warnings, health_score
+   degraded_pvcs, event_warnings, health_score
+   ```
+
+   **Boolean** (data type: `boolean`):
+   ```
+   coredns_healthy
+   ```
+
+   **String** (data type: `string`):
+   ```
+   health_status
    ```
 6. Note the **Device ID** — this is the GEA's identity
 
