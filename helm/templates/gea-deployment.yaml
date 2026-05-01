@@ -45,9 +45,13 @@ spec:
           volumeMounts:
             - name: gea-data
               mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: {{ .Values.gea.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: {{ .Values.gea.service.port }}
             initialDelaySeconds: 30
             periodSeconds: 30

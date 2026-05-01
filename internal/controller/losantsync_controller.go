@@ -29,8 +29,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 	"github.com/mak3r/losant-device/internal/gea"
@@ -162,7 +164,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		DeviceID:   clusterDeviceID,
 		Attributes: clusterAttributes(clusterSnapshot),
 	}); err != nil {
-		logger.Error(err, "failed to report cluster state to GEA")
+		logger.Info("GEA unreachable, will retry", "error", err.Error())
 		return r.setDegraded(ctx, &ls, "GEAReachable", "GEAUnreachable", err.Error())
 	}
 	setCondition(&ls, "GEAReachable", metav1.ConditionTrue, "Reachable", "GEA accepted cluster state")
@@ -206,7 +208,8 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 // SetupWithManager registers the controller with the manager.
 func (r *LosantSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&losantv1alpha1.LosantSync{}).
+		For(&losantv1alpha1.LosantSync{},
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
