@@ -96,7 +96,7 @@ uninstall: manifests ## Remove CRDs from the cluster (set ignore-not-found=true 
 	kubectl delete --ignore-not-found=$(ignore-not-found) -f config/crd/bases
 
 .PHONY: deploy
-deploy: manifests ## Deploy the controller to the cluster with image substitution (set IMG=<image>:<tag>)
+deploy: manifests install ## Deploy controller to cluster, installing CRDs first via kubectl apply (idempotent; set IMG=<image>:<tag>)
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
