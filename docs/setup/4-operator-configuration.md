@@ -52,28 +52,6 @@ kubectl get losantsync prod-edge-01 -w
 
 See [docs/architecture.md](../architecture.md#crd-losantsync) for the full CRD field reference.
 
-> **Known issue — cluster device duplication**: The controller's provisioner will create a second Edge Compute device in Losant if it cannot match `LosantSync.spec.clusterName` to the device you created manually in [Step 1](1-losant-device-setup.md). Until automated provisioning matching is fully implemented, you may see two cluster-level devices in the Losant UI after the first reconcile.
->
-> **Workaround:**
-> 1. In the Losant UI, identify the controller-created device (it will have tags set by the controller, such as `health_status=provisioning`)
-> 2. Note its **Device ID**
-> 3. Delete the original manually created device
-> 4. Update the `DEVICE_ID` key in the `losant-gea-credentials` secret to the controller-created device's ID:
->    ```bash
->    kubectl create secret generic losant-gea-credentials \
->      --from-literal=DEVICE_ID=<controller-created-device-id> \
->      --from-literal=ACCESS_KEY=<existing-access-key> \
->      --from-literal=ACCESS_SECRET=<existing-access-secret> \
->      -n losant-system \
->      --dry-run=client -o yaml | kubectl apply -f -
->    ```
-> 5. Restart the GEA pod to pick up the new `DEVICE_ID`:
->    ```bash
->    kubectl rollout restart deployment/losant-gea -n losant-system
->    ```
->
-> This workaround will be removed once issue #211 (automated provisioning matching) is resolved.
-
 ---
 
 ## Dashboard Setup

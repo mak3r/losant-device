@@ -6,7 +6,7 @@ Complete setup for the losant-device operator requires steps in both the Losant 
 
 | Step | What happens | Requires cluster? |
 |---|---|---|
-| [1. Losant device setup](1-losant-device-setup.md) | Create Losant Application, Edge Compute device, access key, API token, and Kubernetes secrets | No — UI only |
+| [1. Losant device setup](1-losant-device-setup.md) | Create Losant Application, API token, and provisioning Kubernetes secret (device and GEA credentials are auto-provisioned by the controller) | No — UI + kubectl |
 | [2. Cluster deployment](2-cluster-deployment.md) | Deploy the operator and GEA pod to the cluster | Yes |
 | [3. Losant workflow setup](3-losant-workflow-setup.md) | Create and deploy the Edge Workflow to the GEA | Yes — GEA must be Online |
 | [4. Operator configuration](4-operator-configuration.md) | (Optional) Device Recipe + apply the LosantSync CR | Yes |

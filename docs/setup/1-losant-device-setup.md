@@ -1,13 +1,25 @@
 # Step 1: Losant Device Setup
 
-Configure the Losant Application and Edge Compute device. All steps in this document are performed in the Losant UI — no running cluster is required.
+Configure the Losant Application and the API credentials the controller needs. The controller now handles Edge Compute device creation and GEA credential bootstrap automatically.
+
+## Quick Start
+
+You only need to perform three manual steps before deploying:
+
+1. **Create a Losant Application** (Step 1 below)
+2. **Create an Application API Token** (Step 2 below)
+3. **Create the provisioning Kubernetes Secret** with that token (Step 3 below)
+
+The controller provisions the Edge Compute device, GEA Access Key, and `losant-gea-credentials` Secret automatically on first reconcile. See [Step 4](4-operator-configuration.md) for applying the LosantSync CR that triggers provisioning.
+
+---
 
 ## Prerequisites
 
 - A Losant account at [app.losant.com](https://app.losant.com)
-- `kubectl` access to your cluster (for Step 5 — creating Kubernetes secrets)
+- `kubectl` access to your cluster (for Step 3 — creating the Kubernetes secret)
 
-> **Bootstrap constraint**: The cluster Edge Compute device (Step 2 below) must exist in Losant **before** the operator starts. The controller discovers and manages peripheral (node) devices automatically, but the cluster-level Edge Compute device must be pre-provisioned manually.
+> **Auto-provisioning**: The controller creates the cluster Edge Compute device and all GEA credentials automatically on first reconcile. Manual device creation is no longer required for standard deployments. See [Advanced: Manual Pre-Provisioning](#advanced-manual-pre-provisioning) at the bottom of this page for environments where outbound REST calls from the controller are restricted.
 
 ---
 
@@ -20,24 +32,64 @@ Configure the Losant Application and Edge Compute device. All steps in this docu
 
 ---
 
-## Step 2: Create the Edge Compute Device (Cluster Device)
+## Step 2: Create an Application API Token
 
-This device represents the cluster in Losant. Its credentials are used by the GEA pod.
+The controller authenticates to the Losant REST API using a Losant Application API Token — **not** a device access key. Device access keys are MQTT-only credentials; they cannot make REST API calls.
 
-1. Inside your Application, click **Devices** → **Add Device**
-2. Choose device type: **Edge Compute**
-3. Name it `cluster-<your-cluster-name>` (e.g., `cluster-prod-edge-01`)
-4. Add the following tags (these can also be managed by the controller at runtime):
-   ```
-   device_type  = cluster
-   cluster_name = <your-cluster-name>
-   region       = <your-region>
-   health_status = provisioning
-   ```
+1. In your Application → **Security** → **API Tokens** → **Add API Token**
+2. Give it a name (e.g., `losant-device-controller`)
+3. Set the expiration as appropriate for your security policy (or leave as no expiration)
+4. Note the **API Token** value (shown only once)
 
-   > **Tags vs. Attributes**: Losant *tags* are device metadata used for filtering and search — they are not time-series data. Losant *attributes* store state values reported over time (what the controller POSTs on every sync). `health_status` appears as both: a tag that holds the initial provisioning state and an attribute that receives ongoing string state updates from the controller. You must create it in the Attributes list below so the controller's state reports are accepted.
+---
 
-5. Under **Attributes**, add these grouped by type:
+## Step 3: Create the Provisioning Kubernetes Secret
+
+The secret must go into the `losant-system` namespace. Create it first — this command is idempotent and safe to re-run:
+
+```bash
+kubectl create namespace losant-system --dry-run=client -o yaml | kubectl apply -f -
+```
+
+```bash
+# Provisioning credentials — used by the controller for Losant REST API calls
+kubectl create secret generic losant-provisioning-credentials \
+  --from-literal=api-token=<application-api-token-from-step-2> \
+  -n losant-system
+```
+
+> **Key name matters**: The controller reads a single `api-token` key from this secret. Using any other key name will cause the operator to fail at startup with a missing-key error.
+
+---
+
+## Next step
+
+**[Step 2 → Cluster deployment](2-cluster-deployment.md)** — deploy the operator and GEA pod to the cluster.
+
+---
+
+## Advanced: Manual Pre-Provisioning
+
+For environments where the operator cannot make outbound REST API calls to `api.losant.com` at startup (e.g., strict egress firewall rules), you can disable auto-provisioning and create the cluster device manually.
+
+Deploy with auto-provisioning disabled:
+
+```bash
+# Helm
+helm install losant-device helm/ \
+  --namespace losant-system \
+  --create-namespace \
+  --set gea.autoProvision=false \
+  ...
+
+# Kustomize — set the GEA_AUTO_PROVISION=false env var in a kustomize overlay
+```
+
+When `autoProvision=false`, complete these manual steps **before** deploying:
+
+1. **Create the Edge Compute device** in Losant: Application → **Devices** → **Add Device** → **Edge Compute**
+
+   Under **Attributes**, add these grouped by type:
 
    **Number** (data type: `number`):
    ```
@@ -55,61 +107,18 @@ This device represents the cluster in Losant. Its credentials are used by the GE
    ```
    health_status
    ```
-6. Note the **Device ID** — this is the GEA's identity
 
----
+   Note the **Device ID**.
 
-## Step 3: Create the GEA Access Key
+2. **Create a GEA Access Key**: on the device page → **Security** → **Add Access Key**. Note the **Access Key** and **Access Secret** (shown only once).
 
-The GEA pod needs its own credentials to authenticate to Losant as the Edge Compute device.
+3. **Create the `losant-gea-credentials` secret**:
+   ```bash
+   kubectl create secret generic losant-gea-credentials \
+     --from-literal=DEVICE_ID=<edge-compute-device-id> \
+     --from-literal=ACCESS_KEY=<gea-access-key> \
+     --from-literal=ACCESS_SECRET=<gea-access-secret> \
+     -n losant-system
+   ```
 
-1. On the Edge Compute device page → **Security** → **Add Access Key**
-2. Note the **Access Key** and **Access Secret** (the secret is shown only once)
-
----
-
-## Step 4: Create an Application API Token
-
-The controller authenticates to the Losant REST API using a Losant Application API Token — **not** a device access key. Device access keys are MQTT-only credentials used by the GEA pod; they cannot make REST API calls.
-
-1. In your Application → **Security** → **API Tokens** → **Add API Token**
-2. Give it a name (e.g., `losant-device-controller`)
-3. Set the expiration as appropriate for your security policy (or leave as no expiration)
-4. Note the **API Token** value (shown only once)
-
----
-
-## Step 5: Create Kubernetes Secrets
-
-The secrets must go into the `losant-system` namespace. Create it first — this command is idempotent and safe to re-run:
-
-```bash
-kubectl create namespace losant-system --dry-run=client -o yaml | kubectl apply -f -
-```
-
-```bash
-# GEA credentials — mounted into the GEA pod as environment variables
-kubectl create secret generic losant-gea-credentials \
-  --from-literal=DEVICE_ID=<edge-compute-device-id-from-step-2> \
-  --from-literal=ACCESS_KEY=<gea-access-key-from-step-3> \
-  --from-literal=ACCESS_SECRET=<gea-access-secret-from-step-3> \
-  -n losant-system
-
-# Provisioning credentials — used by the controller for Losant REST API calls
-kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=api-token=<application-api-token-from-step-4> \
-  -n losant-system
-```
-
-> **Key name matters**: The GEA secret requires uppercase `DEVICE_ID`, `ACCESS_KEY`, `ACCESS_SECRET`. The controller secret requires lowercase `api-token`. Using any other key names will cause the respective component to fail at startup. To verify:
-> ```bash
-> kubectl get secret losant-gea-credentials -n losant-system \
->   -o jsonpath='{.data}' | jq 'keys'
-> # Expected: ["ACCESS_KEY", "ACCESS_SECRET", "DEVICE_ID"]
-> ```
-
----
-
-## Next step
-
-**[Step 2 → Cluster deployment](2-cluster-deployment.md)** — deploy the operator and GEA pod to the cluster.
+The controller will use this pre-existing secret and will not attempt to provision a device via the REST API.
