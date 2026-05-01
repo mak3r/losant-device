@@ -6,4 +6,4 @@ resources:
 images:
 - name: controller
   newName: ghcr.io/mak3r/losant-device
-  newTag: latest
+  newTag: v0.1.0-alpha.6
