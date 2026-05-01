@@ -38,6 +38,7 @@ import (
 	"github.com/mak3r/losant-device/internal/gea"
 	"github.com/mak3r/losant-device/internal/losant"
 	"github.com/mak3r/losant-device/internal/monitor"
+	"github.com/mak3r/losant-device/internal/provisioner"
 )
 
 const requeueOnDegraded = time.Minute
@@ -142,6 +143,19 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.setDegraded(ctx, &ls, "DevicesProvisioned", "ClusterDeviceError", err.Error())
 	}
 	ls.Status.ClusterDeviceID = clusterDeviceID
+
+	// Step 4.5: one-time GEA credential bootstrap (idempotent; skipped once GEABootstrapped=True).
+	// Falls through on success so the GEA connectivity check in Step 6 validates immediately.
+	if !apimeta.IsStatusConditionTrue(ls.Status.Conditions, "GEABootstrapped") {
+		b := &provisioner.GEABootstrapper{
+			Client:       r.Client,
+			LosantClient: lc,
+		}
+		if err := b.Bootstrap(ctx, &ls, clusterDeviceID); err != nil {
+			return r.setDegraded(ctx, &ls, "GEABootstrapped", "BootstrapFailed", err.Error())
+		}
+		setCondition(&ls, "GEABootstrapped", metav1.ConditionTrue, "BootstrapComplete", "GEA credentials provisioned")
+	}
 
 	// Step 5: ensure peripheral devices exist for every node in the health snapshot.
 	clusterSnapshot, nodeSnapshot := r.healthSnapshot()
