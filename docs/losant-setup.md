@@ -221,3 +221,71 @@ Once the operator is running and reporting data, create the three-level dashboar
 3. **Node Dashboard**: add context variable for device ID; use single-device blocks for time-series
 
 See [docs/architecture.md](architecture.md#dashboard-hierarchy) for the full dashboard specification.
+
+---
+
+## Troubleshooting
+
+### Secret key names are wrong
+
+The GEA pod and the controller each require exact key names in their respective secrets. Hyphenated or lowercase variants are not accepted.
+
+| Secret | Required key names |
+|---|---|
+| `losant-gea-credentials` | `DEVICE_ID`, `ACCESS_KEY`, `ACCESS_SECRET` |
+| `losant-provisioning-credentials` | `api-token` |
+
+To verify the keys that are actually stored in a secret:
+
+```bash
+kubectl get secret losant-gea-credentials -n losant-system \
+  -o jsonpath='{.data}' | jq 'keys'
+```
+
+Expected output:
+```json
+["ACCESS_KEY", "ACCESS_SECRET", "DEVICE_ID"]
+```
+
+If any key is missing or named differently (e.g., `access-key`, `ACCESS-KEY`, `device_id`), delete and recreate the secret using the exact names shown in Step 6.
+
+---
+
+### GEA is in CrashLoopBackOff but the cluster looks healthy
+
+A failing liveness or readiness probe will cause Kubernetes to restart the GEA pod and report `CrashLoopBackOff`, even when the GEA has already established an MQTT connection to Losant. Check the logs before assuming the GEA itself is broken:
+
+```bash
+kubectl logs deploy/losant-gea -n losant-system
+```
+
+If the output contains the line:
+
+```
+Connected to: mqtts://broker.losant.com
+```
+
+the GEA is healthy. The restart loop is caused by a probe misconfiguration, not a GEA failure. Verify that the probe endpoint and port in your GEA deployment match the HTTP Trigger path (`/state`, port `8080`).
+
+---
+
+### Confirming the controller is reaching the GEA
+
+Once the GEA pod is stable (probes passing, no crash loop), confirm that the controller is successfully POSTing state to it:
+
+```bash
+# Watch the GEA pod logs for incoming requests
+kubectl logs deploy/losant-gea -n losant-system --follow
+
+# In another terminal, trigger a reconcile by patching the LosantSync
+kubectl annotate losantsync prod-edge-01 force-sync=$(date +%s) --overwrite
+```
+
+Each reconcile cycle should produce log lines similar to:
+
+```
+POST /state 200  deviceId=<cluster-device-id>
+POST /state 200  deviceId=<node-device-id>
+```
+
+If no POST lines appear, check that `LosantSync.spec.gea.serviceRef` and `.spec.gea.port` match the GEA service name and port (`losant-gea`, `8080`) in the cluster.
