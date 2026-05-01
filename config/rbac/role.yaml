@@ -20,11 +20,18 @@ rules:
   - nodes
   - persistentvolumeclaims
   - pods
-  - secrets
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - update
 - apiGroups:
   - apps
   resources:
@@ -32,6 +39,7 @@ rules:
   verbs:
   - get
   - list
+  - patch
   - watch
 - apiGroups:
   - coordination.k8s.io
