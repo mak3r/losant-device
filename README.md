@@ -124,11 +124,10 @@ See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workfl
 
 ## Documentation
 
+- [Setup Guide](docs/setup/README.md) — sequenced setup: Losant device → cluster deployment → workflow → operator config
 - [Architecture](docs/architecture.md) — system design, device model, controller internals
-- [Deployment](docs/deployment.md) — kustomize and Helm deployment paths, GEA manifest layout
 - [Helm Values](helm/README.md) — full reference for all Helm chart values
 - [Agent Workflow](docs/agent-workflow.md) — multi-agent branch strategy and persona rules
-- [Losant Setup](docs/losant-setup.md) — one-time Losant Application and Edge Compute device configuration
 - [Runbook](docs/runbook.md) — operational procedures: deploy, diagnose, schedule changes, e2e suite
 - [Acceptance Criteria](docs/acceptance-criteria.md) — testable criteria for the full LosantSync reconciliation lifecycle
 
