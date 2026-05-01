@@ -164,7 +164,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		DeviceID:   clusterDeviceID,
 		Attributes: clusterAttributes(clusterSnapshot),
 	}); err != nil {
-		logger.Error(err, "failed to report cluster state to GEA")
+		logger.Info("GEA unreachable, will retry", "error", err.Error())
 		return r.setDegraded(ctx, &ls, "GEAReachable", "GEAUnreachable", err.Error())
 	}
 	setCondition(&ls, "GEAReachable", metav1.ConditionTrue, "Reachable", "GEA accepted cluster state")
