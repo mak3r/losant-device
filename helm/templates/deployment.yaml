@@ -21,5 +21,8 @@ spec:
         - name: manager
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          env:
+            - name: GEA_DEPLOYMENT_REF
+              value: {{ if .Values.gea.deploymentRef }}{{ .Values.gea.deploymentRef | quote }}{{ else }}{{ printf "%s-gea" (include "losant-device.fullname" .) | quote }}{{ end }}
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}

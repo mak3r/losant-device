@@ -15,6 +15,12 @@ controller:
   logLevel: info
 
 gea:
+  # autoProvision: when true, the controller creates losant-gea-credentials automatically;
+  # Helm skips Secret creation to avoid overwriting controller-written credentials on upgrade.
+  autoProvision: true
+  # deploymentRef: name of the GEA Deployment used by the controller for rolling restarts
+  # after writing new credentials. Must match the deployed GEA Deployment name.
+  deploymentRef: ""
   image:
     repository: losant/edge-agent
     tag: latest
