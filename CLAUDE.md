@@ -22,6 +22,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 | **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 | **product-designer** | `persona/product-designer` | `.claude/plans/**`, GitHub Issues (create only), `docs/architecture.md` (joint with docs) |
+| **triage** | — (no commits) | Creates GitHub issues only; conducts human intake interview |
 
 ### Hard Rules
 
@@ -32,6 +33,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 - **docs** never modifies `*.go` files or `helm/templates/**`
 - **merge-manager** never commits code of any kind
 - **product-designer** never modifies source files of any kind; creates plans and GitHub issues only
+- **triage** never commits code, never modifies files, never creates plans; creates GitHub issues only after human confirmation
 
 ## Merge Manager Rules
 
@@ -59,6 +61,40 @@ The product designer is a trusted advisor and orchestrator, not an implementer. 
 7. Never merges PRs — gates and merges are the merge manager's responsibility
 
 To invoke: ask Claude to "act as product-designer" or check out `persona/product-designer`.
+
+## Triage Agent Rules
+
+The triage agent is an intake specialist, not an implementer. When invoked it:
+
+1. Conducts an interactive conversation to fully understand the issue being reported
+2. Asks clarifying questions until it has sufficient information to produce a complete report
+3. Determines the correct persona(s), phase, and type for each issue
+4. Presents a draft of every issue to the human for confirmation before creating anything
+5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
+6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `type/bug` AND `persona/test-engineer` + `type/task`)
+7. Never commits code, never modifies any file, never creates `.claude/plans/` documents
+
+To invoke: run the `/triage` Claude Code skill.
+
+### Triage Routing Table
+
+| Symptom | Primary Issue | Secondary Issue |
+|---|---|---|
+| Code crash / broken functionality | `persona/developer` + `type/bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
+| Usability confusion / unclear docs | `persona/docs` + `type/task` | — |
+| Security concern / RBAC / credential exposure | `persona/security` + `type/security` | — |
+| Architecture question / new feature design | `persona/product-designer` + `type/task` | — |
+| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `type/bug` | — |
+| E2E / acceptance test failure | `persona/qa` + `type/bug` | — |
+
+### Phase Determination
+
+| Affected Component | Phase Label |
+|---|---|
+| `go.mod`, `Makefile`, `.github/workflows/**`, CI pipeline, module scaffolding | `phase/1-foundation` |
+| `internal/controller/**`, `internal/monitor/store.go`, `internal/scheduler/**`, `internal/gea/**` | `phase/2-core-logic` |
+| `internal/losant/**`, `internal/provisioner/**`, `api/v1alpha1/**`, Losant REST API, GEA MQTT | `phase/3-integration` |
+| `config/rbac/**`, `test/e2e/**`, `docs/runbook.md`, `docs/acceptance-criteria.md`, release pipeline | `phase/4-hardening` |
 
 ## Test Engineer Pairing Model
 
@@ -192,3 +228,5 @@ When creating issues, always apply:
 - A `type/task`, `type/bug`, or `type/security` label
 
 The merge manager uses these labels to route notifications and gate PRs.
+
+The triage agent does not apply a `persona/triage` label. It creates issues for other personas — it never owns an issue itself.
