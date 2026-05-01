@@ -4,9 +4,12 @@ Create and deploy the Edge Workflow that receives state reports from the control
 
 ## Prerequisites
 
+- LosantSync CR applied and at least one reconcile completed (see [Step 4](4-operator-configuration.md)) — the controller creates the Edge Compute device automatically on first reconcile, typically within 30 seconds
 - GEA pod deployed and showing **Online** status in Losant (see [Step 2](2-cluster-deployment.md))
 
-> If the device is not Online, do not proceed — the workflow deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* This means the GEA has not yet registered an agent version with Losant.
+> **Wait for the device to appear**: The Edge Compute device is provisioned by the controller on first reconcile. If you have not yet applied the LosantSync CR, do that now ([Step 4](4-operator-configuration.md)) and wait ~30 seconds for the device to appear in **Application → Devices** before creating the workflow.
+
+> If the device is not Online when you attempt to deploy the workflow, the deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* This means the GEA has not yet registered an agent version with Losant.
 
 ---
 
@@ -14,7 +17,7 @@ Create and deploy the Edge Workflow that receives state reports from the control
 
 1. In your Application → **Workflows** → **Add Workflow** → **Edge Workflow**
 2. Give the workflow a name (e.g., `k8s-state-receiver`)
-3. Under **Edge Devices**, select the Edge Compute device you created in [Step 1](1-losant-device-setup.md)
+3. Under **Edge Devices**, select the Edge Compute device provisioned by the controller (visible in **Application → Devices** after first reconcile)
 
 > **Note on Device trigger blocks**: The Losant workflow editor shows cloud-side trigger nodes labelled "Device" (command, connect, disconnect, startup). These fire on MQTT events from a cloud perspective and are **not** what you need here. You need an **HTTP Trigger** node, which is an edge-side trigger that listens for local HTTP requests on the GEA pod.
 
