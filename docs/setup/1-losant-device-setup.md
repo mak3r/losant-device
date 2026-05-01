@@ -81,6 +81,12 @@ The controller authenticates to the Losant REST API using a Losant Application A
 
 ## Step 5: Create Kubernetes Secrets
 
+The secrets must go into the `losant-system` namespace. Create it first — this command is idempotent and safe to re-run:
+
+```bash
+kubectl create namespace losant-system --dry-run=client -o yaml | kubectl apply -f -
+```
+
 ```bash
 # GEA credentials — mounted into the GEA pod as environment variables
 kubectl create secret generic losant-gea-credentials \
