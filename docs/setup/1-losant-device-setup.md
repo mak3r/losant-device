@@ -5,7 +5,7 @@ Configure the Losant Application and Edge Compute device. All steps in this docu
 ## Prerequisites
 
 - A Losant account at [app.losant.com](https://app.losant.com)
-- `kubectl` access to your cluster (for Step 6 — creating Kubernetes secrets)
+- `kubectl` access to your cluster (for Step 5 — creating Kubernetes secrets)
 
 > **Bootstrap constraint**: The cluster Edge Compute device (Step 2 below) must exist in Losant **before** the operator starts. The controller discovers and manages peripheral (node) devices automatically, but the cluster-level Edge Compute device must be pre-provisioned manually.
 
