@@ -142,7 +142,12 @@ Because `deviceId` is included in every POST body, a single workflow handles bot
 8. From the HTTP Trigger, add a **Device: Set State** node
 9. Set the **Device** field to **Payload Path** and enter `data.body.deviceId`
 10. Set the **State** field to **Payload Path** and enter `data.body.data`
-11. Add a **HTTP Response** node after the Set State node; return status `200`
+11. Add a **HTTP Response** node after the Set State node:
+    - Set **Response Code** to `200`
+    - Set **Response Body Source** to **String Template**
+    - Set **Response Body Template** to `{}`
+
+    > The controller only checks the HTTP status code; the response body is ignored. `{}` is a valid minimal JSON body that satisfies the required field.
 
 ### Deploying the workflow
 
