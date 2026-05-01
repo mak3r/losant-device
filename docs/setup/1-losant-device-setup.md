@@ -5,7 +5,7 @@ Configure the Losant Application and Edge Compute device. All steps in this docu
 ## Prerequisites
 
 - A Losant account at [app.losant.com](https://app.losant.com)
-- `kubectl` access to your cluster (for Step 6 — creating Kubernetes secrets)
+- `kubectl` access to your cluster (for Step 5 — creating Kubernetes secrets)
 
 > **Bootstrap constraint**: The cluster Edge Compute device (Step 2 below) must exist in Losant **before** the operator starts. The controller discovers and manages peripheral (node) devices automatically, but the cluster-level Edge Compute device must be pre-provisioned manually.
 
@@ -80,6 +80,12 @@ The controller authenticates to the Losant REST API using a Losant Application A
 ---
 
 ## Step 5: Create Kubernetes Secrets
+
+The secrets must go into the `losant-system` namespace. Create it first — this command is idempotent and safe to re-run:
+
+```bash
+kubectl create namespace losant-system --dry-run=client -o yaml | kubectl apply -f -
+```
 
 ```bash
 # GEA credentials — mounted into the GEA pod as environment variables

@@ -24,15 +24,24 @@ kubectl create namespace losant-system
 
 This is the default path used in development and CI. The Makefile wraps `kubectl` and `kustomize` for each step.
 
-### Install CRDs only
+### Step 1: Install CRDs
 
 ```bash
 make install IMG=ghcr.io/mak3r/losant-device:latest
 ```
 
-Applies the `LosantSync` CRD from `config/crd/bases/` into the cluster. Safe to run repeatedly — it is idempotent.
+Registers the `LosantSync` CRD with the Kubernetes API server. **This must be run before `make deploy`.** The controller will fail immediately on startup with a "no matches for kind LosantSync" error if the CRD is not present.
 
-### Deploy controller + GEA
+Safe to run repeatedly — it is idempotent.
+
+Verify the CRD is registered:
+
+```bash
+kubectl get crd | grep losant.io
+# Expected: losantsyncs.losant.io   <timestamp>
+```
+
+### Step 2: Deploy controller + GEA
 
 ```bash
 make deploy IMG=ghcr.io/mak3r/losant-device:latest
@@ -55,6 +64,8 @@ make uninstall
 ```
 
 Deletes the `LosantSync` CRD. Any existing `LosantSync` CR objects will be garbage-collected.
+
+> **`make undeploy` vs. `make uninstall`**: `make undeploy` removes the controller Deployment, RBAC, and GEA resources, but leaves the CRD registered. `make uninstall` removes the CRD itself. For a full teardown, run `make undeploy` followed by `make uninstall` (or use `make reset` — see [Step 5: Teardown](5-teardown.md)).
 
 ---
 
