@@ -8,15 +8,6 @@ rules:
   - ""
   resources:
   - events
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - watch
-- apiGroups:
-  - ""
-  resources:
   - nodes
   - persistentvolumeclaims
   - pods
@@ -29,9 +20,7 @@ rules:
   resources:
   - secrets
   verbs:
-  - create
   - get
-  - update
 - apiGroups:
   - apps
   resources:
@@ -39,7 +28,6 @@ rules:
   verbs:
   - get
   - list
-  - patch
   - watch
 - apiGroups:
   - coordination.k8s.io
