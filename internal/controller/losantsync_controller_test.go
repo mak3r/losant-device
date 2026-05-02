@@ -667,7 +667,7 @@ func TestDegradedNextScheduledTimeAdvances(t *testing.T) {
 	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
 
 	before := time.Now()
-	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	result, err := reconcileTwice(t, r, reqFor(ls.Name))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -687,6 +687,74 @@ func TestDegradedNextScheduledTimeAdvances(t *testing.T) {
 	hi := before.Add(5 * time.Minute)
 	if next.Before(lo) || next.After(hi) {
 		t.Errorf("NextScheduledTime %v not in expected window [%v, %v]", next, lo, hi)
+	}
+	if result.RequeueAfter != 5*time.Minute {
+		t.Errorf("RequeueAfter: got %v, want 5m", result.RequeueAfter)
+	}
+}
+
+// TestHappyPathWritesGEACredentials verifies that after successful device provisioning
+// the losant-gea-credentials Secret is created with DEVICE_ID, ACCESS_KEY, and ACCESS_SECRET.
+func TestHappyPathWritesGEACredentials(t *testing.T) {
+	ls := baseLS("gea-creds")
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Bootstrap writes the secret into ProvisioningSecretRef.Namespace ("default").
+	var cred corev1.Secret
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "losant-gea-credentials", Namespace: ls.Spec.ProvisioningSecretRef.Namespace}, &cred); err != nil {
+		t.Fatalf("losant-gea-credentials Secret not found: %v", err)
+	}
+	if string(cred.Data["DEVICE_ID"]) != "mock-cluster-device-id" {
+		t.Errorf("DEVICE_ID: got %q, want %q", string(cred.Data["DEVICE_ID"]), "mock-cluster-device-id")
+	}
+	if string(cred.Data["ACCESS_KEY"]) != "mock-access-key" {
+		t.Errorf("ACCESS_KEY: got %q, want %q", string(cred.Data["ACCESS_KEY"]), "mock-access-key")
+	}
+	if string(cred.Data["ACCESS_SECRET"]) != "mock-access-secret" {
+		t.Errorf("ACCESS_SECRET: got %q, want %q", string(cred.Data["ACCESS_SECRET"]), "mock-access-secret")
+	}
+}
+
+// TestBootstrapFailureSetsGEABootstrappedFalse verifies that when the GEA credential
+// Secret creation fails, Phase=Degraded is set, GEABootstrapped=False is surfaced, and
+// the reconciler requeues with a positive RequeueAfter.
+func TestBootstrapFailureSetsGEABootstrappedFalse(t *testing.T) {
+	bootstrapErr := errors.New("etcd write failed")
+	ls := baseLS("bootstrap-fail")
+
+	c := buildClientWithInterceptor(interceptor.Funcs{
+		Create: func(_ context.Context, cl client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if s, ok := obj.(*corev1.Secret); ok && s.Name == "losant-gea-credentials" {
+				return bootstrapErr
+			}
+			return cl.Create(context.Background(), obj, opts...)
+		},
+	}, ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	result, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected reconcile error: %v", err)
+	}
+	if result.RequeueAfter <= 0 {
+		t.Errorf("RequeueAfter: got %v, want > 0 (should requeue after bootstrap failure)", result.RequeueAfter)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, "GEABootstrapped") {
+		t.Error("expected GEABootstrapped=False when Secret creation fails")
 	}
 }
 
