@@ -23,7 +23,7 @@ Each condition has a `reason` and `message` that identifies exactly which step f
 ## Confirm GEA is connected
 
 ```bash
-kubectl logs deploy/losant-gea -n losant-system | grep "Connected to"
+kubectl logs deploy/losant-device-gea -n losant-system | grep "Connected to"
 # Expected: Connected to: mqtts://broker.losant.com
 ```
 
