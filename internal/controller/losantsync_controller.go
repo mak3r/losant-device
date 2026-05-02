@@ -85,13 +85,18 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	// First reconcile: set phase to Provisioning.
+	// First reconcile: set phase to Provisioning and create credential placeholder.
 	if ls.Status.Phase == "" {
 		logger.Info("first reconcile, setting phase to Provisioning", "name", ls.Name)
 		ls.Status.Phase = losantv1alpha1.PhaseProvisioning
 		ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now()}
 		if err := r.Status().Update(ctx, &ls); err != nil {
 			return ctrl.Result{}, err
+		}
+		// Create an empty Secret so the GEA pod can start before provisioning completes.
+		// Non-fatal: bootstrap will create it during provisioning if this fails.
+		if err := provisioner.EnsureCredentialPlaceholder(ctx, r.Client, ls.Spec.ProvisioningSecretRef.Namespace); err != nil {
+			logger.Error(err, "failed to ensure GEA credential placeholder")
 		}
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
