@@ -35,6 +35,36 @@ import (
 
 const geaCredentialsSecretName = "losant-gea-credentials"
 
+// EnsureCredentialPlaceholder creates the losant-gea-credentials Secret with empty values
+// if it does not already exist. This allows the GEA pod to start (avoiding
+// CreateContainerConfigError) before real credentials are provisioned by Bootstrap.
+// It is idempotent and makes no Losant API calls.
+func EnsureCredentialPlaceholder(ctx context.Context, c client.Client, ns string) error {
+	var existing corev1.Secret
+	err := c.Get(ctx, types.NamespacedName{Name: geaCredentialsSecretName, Namespace: ns}, &existing)
+	if err == nil {
+		return nil
+	}
+	if !errors.IsNotFound(err) {
+		return fmt.Errorf("read %s/%s: %w", ns, geaCredentialsSecretName, err)
+	}
+	placeholder := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      geaCredentialsSecretName,
+			Namespace: ns,
+		},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte(""),
+			"ACCESS_KEY":    []byte(""),
+			"ACCESS_SECRET": []byte(""),
+		},
+	}
+	if createErr := c.Create(ctx, placeholder); createErr != nil && !errors.IsAlreadyExists(createErr) {
+		return fmt.Errorf("create placeholder %s/%s: %w", ns, geaCredentialsSecretName, createErr)
+	}
+	return nil
+}
+
 // GEABootstrapper provisions initial GEA MQTT credentials into a cluster Secret.
 type GEABootstrapper struct {
 	Client       client.Client
