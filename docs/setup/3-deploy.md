@@ -88,16 +88,18 @@ kubectl apply -f losantsync.yaml
 
 ## Watch the first reconcile
 
+Replace `<your-cr-name>` with the `metadata.name` value from the CR you applied above (e.g., `prod-edge-01`).
+
 ```bash
-kubectl get losantsync prod-edge-01 -w
+kubectl get losantsync <your-cr-name> -w
 ```
 
 Expected phase sequence:
 
 ```
-NAME           PHASE          AGE
-prod-edge-01   Provisioning   2s
-prod-edge-01   Active         18s
+NAME               PHASE          AGE
+<your-cr-name>     Provisioning   2s
+<your-cr-name>     Active         18s
 ```
 
 **What happens during the first reconcile cycle:**
