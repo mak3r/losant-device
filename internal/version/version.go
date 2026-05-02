@@ -16,4 +16,4 @@ limitations under the License.
 
 package version
 
-const Version = "v0.1.0-alpha.6"
+const Version = "v0.1.0-alpha.8"
