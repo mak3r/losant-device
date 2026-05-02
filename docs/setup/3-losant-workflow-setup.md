@@ -1,15 +1,57 @@
-# Step 3: Losant Workflow Setup
+# Step 3: Apply LosantSync CR and Deploy Edge Workflow
 
-Create and deploy the Edge Workflow that receives state reports from the controller and forwards them to Losant as device state.
+Apply the LosantSync custom resource to start the controller reconciliation loop, wait for the Edge Compute device to appear in Losant, then create and deploy the Edge Workflow.
 
 ## Prerequisites
 
-- LosantSync CR applied and at least one reconcile completed (see [Step 4](4-operator-configuration.md)) — the controller creates the Edge Compute device automatically on first reconcile, typically within 30 seconds
-- GEA pod deployed and showing **Online** status in Losant (see [Step 2](2-cluster-deployment.md))
+- Operator and GEA deployed and running (see [Step 2](2-cluster-deployment.md))
+- `losant-gea-credentials` Secret created (see [Step 1 — Manual Pre-Provisioning](1-losant-device-setup.md#manual-pre-provisioning-create-gea-credentials))
 
-> **Wait for the device to appear**: The Edge Compute device is provisioned by the controller on first reconcile. If you have not yet applied the LosantSync CR, do that now ([Step 4](4-operator-configuration.md)) and wait ~30 seconds for the device to appear in **Application → Devices** before creating the workflow.
+---
 
-> If the device is not Online when you attempt to deploy the workflow, the deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* This means the GEA has not yet registered an agent version with Losant.
+## Apply the LosantSync CR
+
+```yaml
+apiVersion: losant.io/v1alpha1
+kind: LosantSync
+metadata:
+  name: prod-edge-01
+spec:
+  applicationID: "<application-id-from-step-1>"
+  provisioningSecretRef:
+    name: losant-provisioning-credentials
+    namespace: losant-system
+  clusterName: "prod-edge-01"
+  region: "us-west"
+  rancherURL: "https://rancher.example.com"
+  interval: "5m"
+  gea:
+    serviceRef: "losant-gea"
+    port: 8080
+```
+
+Apply it:
+```bash
+kubectl apply -f config/samples/losant_v1alpha1_losantsync.yaml
+```
+
+Watch the controller bring the resource to `Active` phase:
+```bash
+kubectl get losantsync prod-edge-01 -w
+```
+
+See [docs/architecture.md](../architecture.md#crd-losantsync) for the full CRD field reference.
+
+---
+
+## Wait for the Edge Compute Device to Appear
+
+The controller provisions the Edge Compute device in Losant on first reconcile, typically within 30 seconds. Before creating the workflow, confirm the device is present and Online:
+
+1. In Losant: **Application → Devices** — the cluster device should appear (named after `LosantSync.spec.clusterName`)
+2. Confirm the device shows **Online** status — this means the GEA has connected via MQTT
+
+> If the device is not yet Online when you attempt to deploy the workflow, the deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* Wait for the GEA pod to finish its initial MQTT handshake (check `kubectl logs deploy/losant-gea -n losant-system | grep "Connected to"`) then retry.
 
 ---
 
@@ -107,4 +149,4 @@ Once deployed, the GEA will start accepting state POSTs from the controller on `
 
 ## Next step
 
-**[Step 4 → Operator configuration](4-operator-configuration.md)** — apply the LosantSync CR to start monitoring.
+**[Step 4 → Operator configuration](4-operator-configuration.md)** — optional Device Recipe and dashboard setup.

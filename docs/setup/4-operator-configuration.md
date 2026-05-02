@@ -1,10 +1,10 @@
 # Step 4: Operator Configuration
 
-Apply the LosantSync custom resource to begin cluster monitoring. Optionally create a Device Recipe for bulk node provisioning.
+Optionally create a Device Recipe for bulk node provisioning and configure Losant dashboards.
 
 ## Prerequisites
 
-- Operator and GEA deployed and running (see [Step 2](2-cluster-deployment.md))
+- LosantSync CR applied and Edge Compute device Online (see [Step 3](3-losant-workflow-setup.md))
 - Edge Workflow deployed to the GEA (see [Step 3](3-losant-workflow-setup.md))
 
 ---
@@ -16,41 +16,6 @@ For clusters with many nodes, a Device Recipe enables bulk peripheral device cre
 1. Application → **Devices** → **Device Recipes** → **Add Recipe**
 2. Configure the recipe with the node device attribute schema (same attributes as the cluster device but for per-node data)
 3. Note the **Recipe ID** — this goes into `LosantSync.spec.deviceRecipeID`
-
----
-
-## Apply the LosantSync CR
-
-```yaml
-apiVersion: losant.io/v1alpha1
-kind: LosantSync
-metadata:
-  name: prod-edge-01
-spec:
-  applicationID: "<application-id-from-step-1>"
-  provisioningSecretRef:
-    name: losant-provisioning-credentials
-    namespace: losant-system
-  clusterName: "prod-edge-01"
-  region: "us-west"
-  rancherURL: "https://rancher.example.com"
-  interval: "5m"
-  gea:
-    serviceRef: "losant-gea"
-    port: 8080
-```
-
-Apply it:
-```bash
-kubectl apply -f config/samples/losant_v1alpha1_losantsync.yaml
-```
-
-Watch the controller bring the resource to `Active` phase:
-```bash
-kubectl get losantsync prod-edge-01 -w
-```
-
-See [docs/architecture.md](../architecture.md#crd-losantsync) for the full CRD field reference.
 
 ---
 

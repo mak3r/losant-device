@@ -10,7 +10,7 @@ You only need to perform three manual steps before deploying:
 2. **Create an Application API Token** (Step 2 below)
 3. **Create the provisioning Kubernetes Secret** with that token (Step 3 below)
 
-The controller provisions the Edge Compute device, GEA Access Key, and `losant-gea-credentials` Secret automatically on first reconcile. See [Step 4](4-operator-configuration.md) for applying the LosantSync CR that triggers provisioning.
+The controller provisions the Edge Compute device and GEA Access Key automatically on first reconcile. **The `losant-gea-credentials` Secret must still be created manually** (see [Manual Pre-Provisioning](#manual-pre-provisioning-create-gea-credentials) below) until automated secret creation is implemented (#228). See [Step 4](4-operator-configuration.md) for applying the LosantSync CR that triggers provisioning.
 
 ---
 
@@ -19,7 +19,7 @@ The controller provisions the Edge Compute device, GEA Access Key, and `losant-g
 - A Losant account at [app.losant.com](https://app.losant.com)
 - `kubectl` access to your cluster (for Step 3 — creating the Kubernetes secret)
 
-> **Auto-provisioning**: The controller creates the cluster Edge Compute device and all GEA credentials automatically on first reconcile. Manual device creation is no longer required for standard deployments. See [Advanced: Manual Pre-Provisioning](#advanced-manual-pre-provisioning) at the bottom of this page for environments where outbound REST calls from the controller are restricted.
+> **Auto-provisioning (partial)**: The controller creates the cluster Edge Compute device automatically on first reconcile. Automatic creation of the `losant-gea-credentials` Secret is not yet implemented (see #228) — you must still create that secret manually. See [Manual Pre-Provisioning](#manual-pre-provisioning-create-gea-credentials) below for the required steps.
 
 ---
 
@@ -62,63 +62,63 @@ kubectl create secret generic losant-provisioning-credentials \
 
 ---
 
-## Next step
+## GEA Credentials: Which Path Applies to You
 
-**[Step 2 → Cluster deployment](2-cluster-deployment.md)** — deploy the operator and GEA pod to the cluster.
+> **Automated provisioning (coming in #228)**: The controller will create the `losant-gea-credentials` Secret automatically on first reconcile. This path is not yet implemented — see issue #228.
+>
+> **Manual provisioning (currently required)**: Until #228 is merged, all deployments require the `losant-gea-credentials` Secret to be created manually before the GEA pod will start. Follow the steps below.
 
 ---
 
-## Advanced: Manual Pre-Provisioning
+## Manual Pre-Provisioning: Create GEA Credentials
 
-For environments where the operator cannot make outbound REST API calls to `api.losant.com` at startup (e.g., strict egress firewall rules), you can disable auto-provisioning and create the cluster device manually.
+Complete these steps **before** deploying if the `losant-gea-credentials` Secret does not yet exist, or if you are deploying with `gea.autoProvision=false` (e.g., in environments where the controller cannot make outbound REST API calls to `api.losant.com`).
 
-Deploy with auto-provisioning disabled:
+> **No device yet?** If you are following this guide top-to-bottom, no Edge Compute device exists in Losant yet — the controller would have created it on first reconcile. You must create it manually before you can generate access keys.
 
-```bash
-# Helm
-helm install losant-device helm/ \
-  --namespace losant-system \
-  --create-namespace \
-  --set gea.autoProvision=false \
-  ...
+### A. Create the Edge Compute device in Losant
 
-# Kustomize — set the GEA_AUTO_PROVISION=false env var in a kustomize overlay
+Application → **Devices** → **Add Device** → **Edge Compute**
+
+Under **Attributes**, add these grouped by type:
+
+**Number** (data type: `number`):
+```
+total_nodes, ready_nodes, unhealthy_nodes
+total_pods, running_pods, failed_pods, pending_pods, crashloop_pods
+degraded_pvcs, event_warnings, health_score
 ```
 
-When `autoProvision=false`, complete these manual steps **before** deploying:
+**Boolean** (data type: `boolean`):
+```
+coredns_healthy
+```
 
-1. **Create the Edge Compute device** in Losant: Application → **Devices** → **Add Device** → **Edge Compute**
+**String** (data type: `string`):
+```
+health_status
+```
 
-   Under **Attributes**, add these grouped by type:
+Note the **Device ID** — this is the `DEVICE_ID` value for the secret below.
 
-   **Number** (data type: `number`):
-   ```
-   total_nodes, ready_nodes, unhealthy_nodes
-   total_pods, running_pods, failed_pods, pending_pods, crashloop_pods
-   degraded_pvcs, event_warnings, health_score
-   ```
+### B. Create a GEA Access Key
 
-   **Boolean** (data type: `boolean`):
-   ```
-   coredns_healthy
-   ```
+On the Edge Compute device page → **Security** → **Add Access Key**. Note the **Access Key** (`ACCESS_KEY`) and **Access Secret** (`ACCESS_SECRET`) — the secret is shown only once.
 
-   **String** (data type: `string`):
-   ```
-   health_status
-   ```
+### C. Create the `losant-gea-credentials` Kubernetes Secret
 
-   Note the **Device ID**.
+```bash
+kubectl create secret generic losant-gea-credentials \
+  --from-literal=DEVICE_ID=<device-id-from-step-A> \
+  --from-literal=ACCESS_KEY=<access-key-from-step-B> \
+  --from-literal=ACCESS_SECRET=<access-secret-from-step-B> \
+  -n losant-system
+```
 
-2. **Create a GEA Access Key**: on the device page → **Security** → **Add Access Key**. Note the **Access Key** and **Access Secret** (shown only once).
+The GEA pod reads these values at startup. If the secret is missing or has incorrect values, the GEA will fail to connect to Losant with: `access key/secret rejected`. See [docs/runbook.md](../runbook.md#gea-access-keysecret-rejected) for diagnosis steps.
 
-3. **Create the `losant-gea-credentials` secret**:
-   ```bash
-   kubectl create secret generic losant-gea-credentials \
-     --from-literal=DEVICE_ID=<edge-compute-device-id> \
-     --from-literal=ACCESS_KEY=<gea-access-key> \
-     --from-literal=ACCESS_SECRET=<gea-access-secret> \
-     -n losant-system
-   ```
+---
 
-The controller will use this pre-existing secret and will not attempt to provision a device via the REST API.
+## Next step
+
+**[Step 2 → Cluster deployment](2-cluster-deployment.md)** — deploy the operator and GEA pod to the cluster.
