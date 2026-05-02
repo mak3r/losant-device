@@ -10,7 +10,7 @@ You only need to perform three manual steps before deploying:
 2. **Create an Application API Token** (Step 2 below)
 3. **Create the provisioning Kubernetes Secret** with that token (Step 3 below)
 
-The controller provisions the Edge Compute device and GEA Access Key automatically on first reconcile. **The `losant-gea-credentials` Secret must still be created manually** (see [Manual Pre-Provisioning](#manual-pre-provisioning-create-gea-credentials) below) until automated secret creation is implemented (#228). See [Step 4](4-operator-configuration.md) for applying the LosantSync CR that triggers provisioning.
+The controller provisions the Edge Compute device, GEA Access Key, and `losant-gea-credentials` Secret automatically on first reconcile — no manual secret creation required. See [Step 3](3-losant-workflow-setup.md) for applying the LosantSync CR that triggers provisioning.
 
 ---
 
@@ -19,7 +19,7 @@ The controller provisions the Edge Compute device and GEA Access Key automatical
 - A Losant account at [app.losant.com](https://app.losant.com)
 - `kubectl` access to your cluster (for Step 3 — creating the Kubernetes secret)
 
-> **Auto-provisioning (partial)**: The controller creates the cluster Edge Compute device automatically on first reconcile. Automatic creation of the `losant-gea-credentials` Secret is not yet implemented (see #228) — you must still create that secret manually. See [Manual Pre-Provisioning](#manual-pre-provisioning-create-gea-credentials) below for the required steps.
+> **Auto-provisioning (fully implemented)**: The controller creates the cluster Edge Compute device, GEA Access Key, and `losant-gea-credentials` Secret automatically on first reconcile. Manual secret creation is only required when `gea.autoProvision=false` (see [Manual Pre-Provisioning](#manual-pre-provisioning-create-gea-credentials) for that path).
 
 ---
 
@@ -64,15 +64,42 @@ kubectl create secret generic losant-provisioning-credentials \
 
 ## GEA Credentials: Which Path Applies to You
 
-> **Automated provisioning (coming in #228)**: The controller will create the `losant-gea-credentials` Secret automatically on first reconcile. This path is not yet implemented — see issue #228.
->
-> **Manual provisioning (currently required)**: Until #228 is merged, all deployments require the `losant-gea-credentials` Secret to be created manually before the GEA pod will start. Follow the steps below.
+**Automated provisioning (default)**: The controller creates the `losant-gea-credentials` Secret automatically on first reconcile. No manual steps needed — skip directly to [Step 2](2-cluster-deployment.md).
+
+**Manual provisioning (exception)**: Required only if `gea.autoProvision=false` is set — for example, in air-gapped environments where the controller cannot reach `api.losant.com`. Follow the steps below if this applies to your deployment.
 
 ---
 
-## Manual Pre-Provisioning: Create GEA Credentials
+## Automated Provisioning: What to Expect
 
-Complete these steps **before** deploying if the `losant-gea-credentials` Secret does not yet exist, or if you are deploying with `gea.autoProvision=false` (e.g., in environments where the controller cannot make outbound REST API calls to `api.losant.com`).
+When the LosantSync CR is applied (see [Step 3](3-losant-workflow-setup.md)), the controller performs these actions on first reconcile:
+
+1. **Creates the Edge Compute device** in Losant (named after `LosantSync.spec.clusterName`) via the REST API
+2. **Generates a GEA Access Key** on the device
+3. **Creates the `losant-gea-credentials` Secret** in the `losant-system` namespace with `DEVICE_ID`, `ACCESS_KEY`, and `ACCESS_SECRET`
+
+The GEA pod picks up the secret on its next restart and connects to `mqtts://broker.losant.com`.
+
+**Verify provisioning succeeded:**
+
+```bash
+# Confirm the secret was created
+kubectl get secret losant-gea-credentials -n losant-system
+
+# Confirm the GEA connected to Losant
+kubectl logs deploy/losant-gea -n losant-system | grep "Connected to"
+```
+
+> If the secret is not present after the first reconcile completes, check the controller logs:
+> ```bash
+> kubectl logs -n losant-system deploy/losant-device-controller-manager | grep -i "provision\|error"
+> ```
+
+---
+
+## Manual Pre-Provisioning: Create GEA Credentials (`gea.autoProvision=false` only)
+
+Complete these steps **before** deploying if you are running with `gea.autoProvision=false` (e.g., air-gapped environments where the controller cannot reach `api.losant.com`).
 
 > **No device yet?** If you are following this guide top-to-bottom, no Edge Compute device exists in Losant yet — the controller would have created it on first reconcile. You must create it manually before you can generate access keys.
 
