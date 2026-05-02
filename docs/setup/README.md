@@ -1,19 +1,43 @@
 # Setup Guide
 
-Complete setup for the losant-device operator requires steps in both the Losant UI and the Kubernetes cluster. The steps below must be followed **in order** — some Losant UI steps require the cluster to be running first.
+This guide walks through deploying the losant-device operator and connecting it to Losant. The happy path takes under 15 minutes.
 
-## Sequence
+## Quick Start
 
-| Step | What happens | Requires cluster? |
+| Step | Where | What you do |
 |---|---|---|
-| [1. Losant device setup](1-losant-device-setup.md) | Create Losant Application, API token, and provisioning Kubernetes secret (device and GEA credentials are auto-provisioned by the controller) | No — UI + kubectl |
-| [2. Cluster deployment](2-cluster-deployment.md) | Deploy the operator and GEA pod to the cluster | Yes |
-| [3. Losant workflow setup](3-losant-workflow-setup.md) | Apply LosantSync CR, wait for Edge Compute device, then create and deploy Edge Workflow | Yes — GEA must be Online |
-| [4. Operator configuration](4-operator-configuration.md) | (Optional) Device Recipe and dashboard setup | Yes |
-| [5. Teardown and reset](5-teardown.md) | Remove all cluster resources and Losant UI objects for a clean slate | Yes (for cluster steps) |
+| [1. Losant Application](1-losant-application.md) | Losant UI | Create Application + API Token |
+| [2. Kubernetes Preparation](2-kubernetes-preparation.md) | Terminal | Create provisioning Secret |
+| [3. Deploy](3-deploy.md) | Terminal | `helm install` + apply LosantSync CR |
+| [4. Edge Workflow](4-losant-workflow.md) | Losant UI | Create and deploy Edge Workflow |
+| [5. Verify](5-verify.md) | Terminal + Losant UI | Confirm data is flowing |
 
-> **Why this order?** Steps 1 and 2 are independent — you can create the Losant device and deploy the cluster in either order. Step 3 requires the GEA pod to have connected to Losant at least once (so Losant has an agent version on record). Step 4 requires the operator to be running.
+**[Start here → Step 1: Losant Application](1-losant-application.md)**
 
-## Start here
+---
 
-**[Step 1 → Losant device setup](1-losant-device-setup.md)**
+## What the Controller Does for You
+
+You do not need to create devices, access keys, or GEA credentials manually. The controller handles all of that:
+
+| Action | Who | When |
+|---|---|---|
+| Create `losant-system` namespace | Helm | `helm install` |
+| Deploy operator + GEA pod | Helm | `helm install` |
+| Create Edge Compute device in Losant | Controller | First reconcile |
+| Create GEA Access Key | Controller | First reconcile |
+| Write `losant-gea-credentials` Secret | Controller | First reconcile |
+| Restart GEA pod to pick up credentials | Controller | First reconcile |
+| Provision per-node peripheral devices | Controller | Every sync cycle |
+| Report cluster + node state to GEA | Controller | Every sync cycle |
+
+---
+
+## Which Path Applies to You
+
+| Path | When to use |
+|---|---|
+| **Automated (default)** | Controller has outbound access to `api.losant.com` — this is most deployments |
+| **[Manual (`gea.autoProvision=false`)](A-manual-provisioning.md)** | Air-gapped or firewall-restricted environments; external secrets management (Vault, ESO) |
+
+The default path requires no credential management beyond the initial provisioning API token. Start with Step 1.
