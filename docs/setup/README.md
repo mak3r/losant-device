@@ -11,6 +11,7 @@ This guide walks through deploying the losant-device operator and connecting it 
 | [3. Deploy](3-deploy.md) | Terminal | `helm install` + apply LosantSync CR |
 | [4. Edge Workflow](4-losant-workflow.md) | Losant UI | Create and deploy Edge Workflow |
 | [5. Verify](5-verify.md) | Terminal + Losant UI | Confirm data is flowing |
+| [6. Cleanup](6-cleanup.md) | Terminal + Losant UI | Teardown and reset (when needed) |
 
 **[Start here → Step 1: Losant Application](1-losant-application.md)**
 
