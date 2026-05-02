@@ -46,6 +46,8 @@ GEA credentials secret name
 {{- define "losant-device.geaSecretName" -}}
 {{- if .Values.gea.credentials.existingSecret }}
 {{- .Values.gea.credentials.existingSecret }}
+{{- else if .Values.gea.autoProvision }}
+{{- "losant-gea-credentials" }}
 {{- else }}
 {{- include "losant-device.fullname" . }}-gea-credentials
 {{- end }}
