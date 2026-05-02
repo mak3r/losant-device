@@ -299,6 +299,51 @@ This stops all metric reporting and removes the CR. It does **not** delete devic
 
 ---
 
+## GEA Access Key/Secret Rejected
+
+**Symptom**: The GEA pod starts but logs repeat:
+
+```
+[warn] Unable to connect to mqtts://broker.losant.com,
+       access key/secret rejected.
+```
+
+**Cause**: The `ACCESS_KEY` or `ACCESS_SECRET` in the `losant-gea-credentials` secret does not match a valid access key for the `DEVICE_ID` device in Losant, or the device has been deleted.
+
+**Diagnosis**:
+
+```bash
+# Check what DEVICE_ID the GEA is using
+kubectl get secret losant-gea-credentials -n losant-system \
+  -o jsonpath='{.data.DEVICE_ID}' | base64 -d; echo
+
+# Confirm the device exists in Losant UI:
+# Application → Devices → search for that device ID
+```
+
+**Remediation**:
+
+1. In the Losant UI, locate the device for the `DEVICE_ID` shown above
+2. If the device no longer exists, create a new one (Application → **Devices** → **Add Device** → **Edge Compute**)
+3. Generate a new Access Key on the device (device page → **Security** → **Add Access Key**)
+4. Update the secret with the correct values:
+   ```bash
+   kubectl create secret generic losant-gea-credentials \
+     --from-literal=DEVICE_ID=<device-id> \
+     --from-literal=ACCESS_KEY=<new-access-key> \
+     --from-literal=ACCESS_SECRET=<new-access-secret> \
+     -n losant-system \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+5. Restart the GEA pod to pick up the updated secret:
+   ```bash
+   kubectl rollout restart deployment/losant-gea -n losant-system
+   ```
+
+See [docs/setup/1-losant-device-setup.md](setup/1-losant-device-setup.md#manual-pre-provisioning-create-gea-credentials) for the full secret creation walkthrough.
+
+---
+
 ## RBAC Troubleshooting
 
 If the controller logs show `forbidden` errors on `list` or `watch` for `losantsyncs`, refer to issue #39. The generated `role.yaml` may be missing `list;watch` verbs.
