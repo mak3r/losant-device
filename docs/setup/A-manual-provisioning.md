@@ -100,7 +100,7 @@ If the access key is rotated or the device is recreated:
    ```
 3. Restart the GEA pod:
    ```bash
-   kubectl rollout restart deployment/losant-gea -n losant-system
+   kubectl rollout restart deployment/losant-device-gea -n losant-system
    ```
 
 See [docs/runbook.md](../runbook.md#gea-access-keysecret-rejected) for diagnosing connection failures.

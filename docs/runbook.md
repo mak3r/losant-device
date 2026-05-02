@@ -440,7 +440,7 @@ kubectl get secret losant-gea-credentials -n losant-system \
    ```
 5. Restart the GEA pod to pick up the updated secret:
    ```bash
-   kubectl rollout restart deployment/losant-gea -n losant-system
+   kubectl rollout restart deployment/losant-device-gea -n losant-system
    ```
 
 See [docs/setup/A-manual-provisioning.md](setup/A-manual-provisioning.md) for the full manual credential walkthrough.

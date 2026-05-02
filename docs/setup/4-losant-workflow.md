@@ -18,7 +18,7 @@ Before creating the workflow, confirm the device is present and Online:
 
 > If the device is not yet Online when you deploy the workflow, the deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* Wait for the GEA pod to finish its MQTT handshake:
 > ```bash
-> kubectl logs deploy/losant-gea -n losant-system | grep "Connected to"
+> kubectl logs deploy/losant-device-gea -n losant-system | grep "Connected to"
 > ```
 > Then retry the deployment.
 
