@@ -253,6 +253,52 @@ This file is linked from `3-deploy.md` under "Manual credential management".
 
 ---
 
+### File: `docs/setup/6-cleanup.md` — Teardown and reset
+
+| Section | Who | When | Dependency |
+|---|---|---|---|
+| Delete LosantSync CR | User | Before uninstall | Stops reconciliation cleanly |
+| Helm uninstall | User | After CR deleted | Removes operator + GEA + RBAC |
+| Remove CRDs | User | After Helm uninstall | `make uninstall` or `kubectl delete` |
+| Delete Kubernetes Secrets | User | After Helm uninstall | Provisioning + GEA credential secrets |
+| Delete `losant-system` namespace (if manually created) | User | After all resources removed | Namespace not managed by Helm |
+| Losant-side cleanup | User | Optional | Devices + access keys created by controller |
+
+**Commands to include verbatim** (from `Makefile` and `docs/deployment.md`):
+
+```bash
+# 1. Remove the LosantSync CR — stops the controller reconcile loop cleanly
+kubectl delete losantsync --all
+
+# 2. Helm uninstall — removes controller, GEA, RBAC, Services, PVC, Deployments
+helm uninstall losant-device --namespace losant-system
+
+# 3. Remove CRDs — needed if reinstalling with schema changes
+make uninstall
+# or: kubectl delete -f config/crd/bases
+
+# 4. Delete Secrets — not removed by Helm uninstall
+kubectl delete secret losant-provisioning-credentials -n losant-system
+kubectl delete secret losant-gea-credentials -n losant-system  # if created by controller
+
+# 5. Remove namespace (optional — only if you want a full reset)
+kubectl delete namespace losant-system
+```
+
+**Losant-side cleanup note**: The controller creates devices and access keys in Losant that
+are not automatically removed when the operator is uninstalled. If this cluster will not be
+reinstalled, remove them manually from the Losant dashboard:
+- Delete peripheral devices (nodes) under the application
+- Delete the Edge Compute device (cluster device)
+- Revoke the controller-created access key (named `losant-device-controller-<clusterName>-<timestamp>`)
+- Delete the Edge Workflow targeting this device
+
+**Reinstall after reset**: After a full namespace deletion, the next `helm install` starts
+fresh — the controller will re-provision the cluster device (or find it by name if it was not
+deleted from Losant) and re-run the GEA bootstrap sequence.
+
+---
+
 ## What to Remove from the Current `docs/losant-setup.md`
 
 These sections are superseded and should not be carried forward:
