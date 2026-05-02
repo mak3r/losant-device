@@ -206,20 +206,20 @@ func TestBootstrap_SecretCreateFails(t *testing.T) {
 	}
 }
 
-// TestBootstrap_SecretPatchFails verifies that a k8s Patch failure on an incomplete secret is propagated.
-func TestBootstrap_SecretPatchFails(t *testing.T) {
-	patchErr := errors.New("patch rejected")
+// TestBootstrap_SecretUpdateFails verifies that a k8s Update failure on an incomplete secret is propagated.
+func TestBootstrap_SecretUpdateFails(t *testing.T) {
+	updateErr := errors.New("update rejected")
 	incomplete := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: geaSecretName, Namespace: testNS},
 		Data:       map[string][]byte{"DEVICE_ID": []byte("old")},
 	}
 
 	c := buildFakeClientWithInterceptor(interceptor.Funcs{
-		Patch: func(_ context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+		Update: func(_ context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
 			if _, ok := obj.(*corev1.Secret); ok {
-				return patchErr
+				return updateErr
 			}
-			return cl.Patch(context.Background(), obj, patch, opts...)
+			return cl.Update(context.Background(), obj, opts...)
 		},
 	}, incomplete)
 
@@ -229,8 +229,8 @@ func TestBootstrap_SecretPatchFails(t *testing.T) {
 	}
 
 	err := b.Bootstrap(context.Background(), baseLS(), "device-x")
-	if !errors.Is(err, patchErr) {
-		t.Errorf("expected patch error, got: %v", err)
+	if !errors.Is(err, updateErr) {
+		t.Errorf("expected update error, got: %v", err)
 	}
 }
 
