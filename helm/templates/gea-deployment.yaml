@@ -10,11 +10,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "losant-device.fullname" . }}-gea
+      app: losant-gea
   template:
     metadata:
       labels:
-        app: {{ include "losant-device.fullname" . }}-gea
+        app: losant-gea
     spec:
       serviceAccountName: {{ include "losant-device.fullname" . }}-gea
       initContainers:

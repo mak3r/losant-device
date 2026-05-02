@@ -9,7 +9,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: {{ include "losant-device.fullname" . }}-gea
+    app: losant-gea
   ports:
     - name: http-trigger
       port: {{ .Values.gea.service.port }}
