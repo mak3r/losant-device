@@ -652,3 +652,71 @@ func TestNodeDeviceIDEmpty(t *testing.T) {
 		t.Errorf("ReportState calls: got %d, want 1 (node skipped)", len(mg.Calls))
 	}
 }
+
+// TestDegradedNextScheduledTimeAdvances verifies that after a GEA failure drives
+// the reconciler to Degraded, NextScheduledTime is advanced to approximately
+// now + spec.Interval so kubectl shows when the next retry will happen.
+func TestDegradedNextScheduledTimeAdvances(t *testing.T) {
+	ls := baseLS("degrade-nst")
+	ls.Spec.Interval = "5m"
+	mg := gea.NewMockClient()
+	mg.ReportStateFunc = func(_ context.Context, _ gea.StatePayload) error {
+		return errors.New("gea down")
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	before := time.Now()
+	_, err := reconcileTwice(t, r, reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Fatalf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if got.Status.NextScheduledTime == nil {
+		t.Fatal("NextScheduledTime is nil after degraded transition")
+	}
+	next := got.Status.NextScheduledTime.Time
+	lo := before.Add(5*time.Minute - time.Second)
+	hi := before.Add(5 * time.Minute)
+	if next.Before(lo) || next.After(hi) {
+		t.Errorf("NextScheduledTime %v not in expected window [%v, %v]", next, lo, hi)
+	}
+}
+
+// TestDegradedPhaseBypassesScheduleGate verifies that a Degraded reconciler
+// proceeds with real work even when NextScheduledTime is far in the future,
+// whereas Active phase would be short-circuited.
+func TestDegradedPhaseBypassesScheduleGate(t *testing.T) {
+	ls := baseLS("degrade-bypass")
+	ls.Status.Phase = losantv1alpha1.PhaseDegraded
+	ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now().Add(time.Hour)}
+	ml := losant.NewMockClient()
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, mg, monitor.NewHealthStore())
+
+	_, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Losant client must have been called — gate was not tripped.
+	if ml.CallCount() == 0 {
+		t.Error("expected Losant client to be called when Phase=Degraded, schedule gate should not apply")
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active after successful recovery from Degraded", got.Status.Phase)
+	}
+}
