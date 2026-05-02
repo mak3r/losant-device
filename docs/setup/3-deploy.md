@@ -36,7 +36,7 @@ This deploys:
 Immediately after `helm install`, the GEA pod will be in `CreateContainerConfigError`. **This is normal and expected** — the `losant-gea-credentials` Secret does not exist yet.
 
 ```bash
-kubectl get pod -n losant-system -l app=losant-gea
+kubectl get pod -n losant-system -l app=losant-device-gea
 # NAME                         READY   STATUS                       RESTARTS
 # losant-gea-xxxxxxxxx-xxxxx   0/1     CreateContainerConfigError   0
 ```
@@ -117,7 +117,7 @@ NAME               PHASE          AGE
 After reaching `Active`, the GEA pod should show `Running`:
 
 ```bash
-kubectl get pod -n losant-system -l app=losant-gea
+kubectl get pod -n losant-system -l app=losant-device-gea
 # NAME                         READY   STATUS    RESTARTS
 # losant-gea-xxxxxxxxx-xxxxx   1/1     Running   1
 ```
