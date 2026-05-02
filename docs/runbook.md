@@ -2,7 +2,7 @@
 
 Operational procedures for the `losant-device` Kubernetes controller running on k3s clusters.
 
-> **Before you begin**: Complete the one-time Losant setup in [docs/losant-setup.md](losant-setup.md) first. You will need the Edge Compute device ID, access key, and access secret from that guide before the commands below will work.
+> **Before you begin**: Complete initial setup using the [setup guide](setup/README.md) before using these runbook procedures.
 
 ---
 
@@ -97,7 +97,7 @@ make install
    kubectl create namespace losant-system
    ```
 
-2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
+2. Create the provisioning secret (requires a Losant Application API Token — see [setup guide Step 1](setup/1-losant-application.md)):
 
    ```bash
    kubectl create secret generic losant-provisioning-credentials \
@@ -443,7 +443,7 @@ kubectl get secret losant-gea-credentials -n losant-system \
    kubectl rollout restart deployment/losant-gea -n losant-system
    ```
 
-See [docs/setup/1-losant-device-setup.md](setup/1-losant-device-setup.md#manual-pre-provisioning-create-gea-credentials) for the full secret creation walkthrough.
+See [docs/setup/A-manual-provisioning.md](setup/A-manual-provisioning.md) for the full manual credential walkthrough.
 
 ---
 
