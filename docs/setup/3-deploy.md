@@ -36,7 +36,7 @@ This deploys:
 Immediately after `helm install`, the GEA pod will be in `CreateContainerConfigError`. **This is normal and expected** — the `losant-gea-credentials` Secret does not exist yet.
 
 ```bash
-kubectl get pod -n losant-system -l app=losant-gea
+kubectl get pod -n losant-system -l app=losant-device-gea
 # NAME                         READY   STATUS                       RESTARTS
 # losant-gea-xxxxxxxxx-xxxxx   0/1     CreateContainerConfigError   0
 ```
@@ -88,16 +88,18 @@ kubectl apply -f losantsync.yaml
 
 ## Watch the first reconcile
 
+Replace `<your-cr-name>` with the `metadata.name` value from the CR you applied above (e.g., `prod-edge-01`).
+
 ```bash
-kubectl get losantsync prod-edge-01 -w
+kubectl get losantsync <your-cr-name> -w
 ```
 
 Expected phase sequence:
 
 ```
-NAME           PHASE          AGE
-prod-edge-01   Provisioning   2s
-prod-edge-01   Active         18s
+NAME               PHASE          AGE
+<your-cr-name>     Provisioning   2s
+<your-cr-name>     Active         18s
 ```
 
 **What happens during the first reconcile cycle:**
@@ -115,7 +117,7 @@ prod-edge-01   Active         18s
 After reaching `Active`, the GEA pod should show `Running`:
 
 ```bash
-kubectl get pod -n losant-system -l app=losant-gea
+kubectl get pod -n losant-system -l app=losant-device-gea
 # NAME                         READY   STATUS    RESTARTS
 # losant-gea-xxxxxxxxx-xxxxx   1/1     Running   1
 ```
