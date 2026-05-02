@@ -41,7 +41,7 @@ import (
 	"github.com/mak3r/losant-device/internal/provisioner"
 )
 
-const requeueOnDegraded = time.Minute
+const requeueOnDegradedFallback = time.Minute
 
 // LosantSyncReconciler reconciles a LosantSync object.
 type LosantSyncReconciler struct {
@@ -101,8 +101,10 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
-	// Schedule check: if next sync is still in the future, wait.
-	if ls.Status.NextScheduledTime != nil && time.Now().Before(ls.Status.NextScheduledTime.Time) {
+	// Schedule check: only defer when Active and next sync is still in the future.
+	// Degraded and Provisioning phases must proceed immediately on each reconcile.
+	if ls.Status.Phase == losantv1alpha1.PhaseActive &&
+		ls.Status.NextScheduledTime != nil && time.Now().Before(ls.Status.NextScheduledTime.Time) {
 		wait := time.Until(ls.Status.NextScheduledTime.Time)
 		logger.V(1).Info("next sync not yet due", "name", ls.Name, "in", wait.Round(time.Second))
 		return ctrl.Result{RequeueAfter: wait}, nil
@@ -203,7 +205,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Step 8: compute next scheduled time.
-	next, err := nextSchedule(ls.Spec)
+	next, _, err := nextScheduleAndDuration(ls.Spec)
 	if err != nil {
 		logger.Error(err, "failed to compute next schedule")
 		return r.setDegraded(ctx, &ls, "LastSyncSucceeded", "ScheduleError", err.Error())
@@ -232,8 +234,9 @@ func (r *LosantSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// setDegraded sets the given condition to False, phase to Degraded, updates status,
-// and requeues after requeueOnDegraded.
+// setDegraded sets the given condition to False, phase to Degraded, advances
+// NextScheduledTime by spec.interval (so the user can see when the next retry
+// will happen), updates status, and requeues for that duration.
 func (r *LosantSyncReconciler) setDegraded(
 	ctx context.Context,
 	ls *losantv1alpha1.LosantSync,
@@ -242,10 +245,17 @@ func (r *LosantSyncReconciler) setDegraded(
 	ls.Status.Phase = losantv1alpha1.PhaseDegraded
 	setCondition(ls, condType, metav1.ConditionFalse, reason, message)
 	setCondition(ls, "LastSyncSucceeded", metav1.ConditionFalse, reason, message)
+
+	requeueAfter := requeueOnDegradedFallback
+	if next, d, err := nextScheduleAndDuration(ls.Spec); err == nil {
+		ls.Status.NextScheduledTime = &metav1.Time{Time: next}
+		requeueAfter = d
+	}
+
 	if err := r.Status().Update(ctx, ls); err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{RequeueAfter: requeueOnDegraded}, nil
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // healthSnapshot returns the current health state from the store, or empty structs if unset.
@@ -256,21 +266,25 @@ func (r *LosantSyncReconciler) healthSnapshot() (monitor.ClusterHealth, map[stri
 	return r.HealthStore.Snapshot()
 }
 
-// nextSchedule computes the next sync time from spec's CronSchedule or Interval.
-func nextSchedule(spec losantv1alpha1.LosantSyncSpec) (time.Time, error) {
+// nextScheduleAndDuration computes the next sync time and the requeue duration
+// from spec's CronSchedule or Interval. For cron specs the duration is
+// time.Until(next); for interval specs the duration is the parsed interval
+// (exact, not subject to sub-millisecond drift).
+func nextScheduleAndDuration(spec losantv1alpha1.LosantSyncSpec) (time.Time, time.Duration, error) {
 	if spec.CronSchedule != "" {
 		parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 		schedule, err := parser.Parse(spec.CronSchedule)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("invalid cron expression %q: %w", spec.CronSchedule, err)
+			return time.Time{}, 0, fmt.Errorf("invalid cron expression %q: %w", spec.CronSchedule, err)
 		}
-		return schedule.Next(time.Now()), nil
+		next := schedule.Next(time.Now())
+		return next, time.Until(next), nil
 	}
 	d, err := time.ParseDuration(spec.Interval)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid interval %q: %w", spec.Interval, err)
+		return time.Time{}, 0, fmt.Errorf("invalid interval %q: %w", spec.Interval, err)
 	}
-	return time.Now().Add(d), nil
+	return time.Now().Add(d), d, nil
 }
 
 // setCondition upserts a metav1.Condition on the LosantSync status.
