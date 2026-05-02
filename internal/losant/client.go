@@ -63,6 +63,10 @@ type LosantClient interface {
 
 	// GetDevice returns the current definition of a Losant device.
 	GetDevice(ctx context.Context, applicationID, deviceID string) (*Device, error)
+
+	// CreateDeviceAccessKey creates a new Losant access key for the given device.
+	// Returns keyID, key, and secret. The secret is only available in this response.
+	CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (keyID, key, secret string, err error)
 }
 
 // Device is a minimal Losant device representation sufficient for the provisioning workflow.
@@ -167,6 +171,30 @@ func (c *HTTPClient) GetDevice(ctx context.Context, applicationID, deviceID stri
 		return nil, fmt.Errorf("decode device response: %w", err)
 	}
 	return &dev, nil
+}
+
+// CreateDeviceAccessKey creates a Losant access key for the given device and returns
+// the keyID, key, and secret. The secret is shown only in this response.
+func (c *HTTPClient) CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error) {
+	payload := map[string]string{"name": name}
+	path := fmt.Sprintf("%s/applications/%s/devices/%s/accessKeys", apiBase, applicationID, deviceID)
+	body, err := c.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	var resp struct {
+		KeyID  string `json:"keyId"`
+		Key    string `json:"key"`
+		Secret string `json:"secret"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", "", "", fmt.Errorf("decode access key response: %w", err)
+	}
+	if resp.Key == "" || resp.Secret == "" {
+		return "", "", "", fmt.Errorf("create device access key: empty key or secret in response")
+	}
+	return resp.KeyID, resp.Key, resp.Secret, nil
 }
 
 // findDeviceByName returns the first Losant device matching name, or nil if not found.

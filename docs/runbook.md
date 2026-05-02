@@ -2,7 +2,7 @@
 
 Operational procedures for the `losant-device` Kubernetes controller running on k3s clusters.
 
-> **Before you begin**: Complete the one-time Losant setup in [docs/losant-setup.md](losant-setup.md) first. You will need the Edge Compute device ID, access key, and access secret from that guide before the commands below will work.
+> **Before you begin**: Complete initial setup using the [setup guide](setup/README.md) before using these runbook procedures.
 
 ---
 
@@ -97,7 +97,7 @@ make install
    kubectl create namespace losant-system
    ```
 
-2. Create the provisioning secret (requires a Losant Application API Token — see [docs/losant-setup.md](losant-setup.md#step-5-create-an-application-api-token)):
+2. Create the provisioning secret (requires a Losant Application API Token — see [setup guide Step 1](setup/1-losant-application.md)):
 
    ```bash
    kubectl create secret generic losant-provisioning-credentials \
@@ -399,6 +399,51 @@ kubectl delete losantsync my-cluster
 ```
 
 This stops all metric reporting and removes the CR. It does **not** delete devices from the Losant dashboard — historical data is retained. To remove Losant devices, use the Losant UI or API directly.
+
+---
+
+## GEA Access Key/Secret Rejected
+
+**Symptom**: The GEA pod starts but logs repeat:
+
+```
+[warn] Unable to connect to mqtts://broker.losant.com,
+       access key/secret rejected.
+```
+
+**Cause**: The `ACCESS_KEY` or `ACCESS_SECRET` in the `losant-gea-credentials` secret does not match a valid access key for the `DEVICE_ID` device in Losant, or the device has been deleted.
+
+**Diagnosis**:
+
+```bash
+# Check what DEVICE_ID the GEA is using
+kubectl get secret losant-gea-credentials -n losant-system \
+  -o jsonpath='{.data.DEVICE_ID}' | base64 -d; echo
+
+# Confirm the device exists in Losant UI:
+# Application → Devices → search for that device ID
+```
+
+**Remediation**:
+
+1. In the Losant UI, locate the device for the `DEVICE_ID` shown above
+2. If the device no longer exists, create a new one (Application → **Devices** → **Add Device** → **Edge Compute**)
+3. Generate a new Access Key on the device (device page → **Security** → **Add Access Key**)
+4. Update the secret with the correct values:
+   ```bash
+   kubectl create secret generic losant-gea-credentials \
+     --from-literal=DEVICE_ID=<device-id> \
+     --from-literal=ACCESS_KEY=<new-access-key> \
+     --from-literal=ACCESS_SECRET=<new-access-secret> \
+     -n losant-system \
+     --dry-run=client -o yaml | kubectl apply -f -
+   ```
+5. Restart the GEA pod to pick up the updated secret:
+   ```bash
+   kubectl rollout restart deployment/losant-device-gea -n losant-system
+   ```
+
+See [docs/setup/A-manual-provisioning.md](setup/A-manual-provisioning.md) for the full manual credential walkthrough.
 
 ---
 

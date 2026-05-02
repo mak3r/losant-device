@@ -49,6 +49,8 @@
             "storageClassName": { "type": "string" }
           }
         },
+        "autoProvision": { "type": "boolean" },
+        "deploymentRef": { "type": "string" },
         "resources": { "type": "object" },
         "credentials": {
           "type": "object",

@@ -1,7 +1,7 @@
 controller:
   image:
     repository: ghcr.io/mak3r/losant-device
-    tag: latest
+    tag: v0.1.0-alpha.8
     pullPolicy: IfNotPresent
   replicaCount: 1
   resources:
@@ -15,6 +15,12 @@ controller:
   logLevel: info
 
 gea:
+  # autoProvision: when true, the controller creates losant-gea-credentials automatically;
+  # Helm skips Secret creation to avoid overwriting controller-written credentials on upgrade.
+  autoProvision: true
+  # deploymentRef: name of the GEA Deployment used by the controller for rolling restarts
+  # after writing new credentials. Must match the deployed GEA Deployment name.
+  deploymentRef: ""
   image:
     repository: losant/edge-agent
     tag: latest

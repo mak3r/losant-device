@@ -49,6 +49,11 @@ type GEASpec struct {
 	// +kubebuilder:validation:Maximum=65535
 	// +kubebuilder:default=8080
 	Port int32 `json:"port"`
+
+	// DeploymentRef is the name of the GEA Deployment for rolling-restart automation.
+	// If empty, credential bootstrap writes the Secret but does not restart the GEA.
+	// +optional
+	DeploymentRef string `json:"deploymentRef,omitempty"`
 }
 
 // LosantSyncSpec defines the desired state of LosantSync.
@@ -112,7 +117,7 @@ type LosantSyncStatus struct {
 	Phase LosantSyncPhase `json:"phase,omitempty"`
 
 	// Conditions represent the latest available observations of the resource's state.
-	// Known condition types: GEAReachable, DevicesProvisioned, LastSyncSucceeded.
+	// Known condition types: GEABootstrapped, GEAReachable, DevicesProvisioned, LastSyncSucceeded.
 	// +optional
 	// +listType=map
 	// +listMapKey=type
@@ -143,7 +148,7 @@ type LosantSyncStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="GEA",type=string,JSONPath=`.status.conditions[?(@.type=="GEAReachable")].status`
 // +kubebuilder:printcolumn:name="Last Sync",type=date,JSONPath=`.status.lastSyncTime`
-// +kubebuilder:printcolumn:name="Next Sync",type=date,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Next Sync",type=string,JSONPath=`.status.nextScheduledTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // LosantSync is the Schema for the losantsyncs API.

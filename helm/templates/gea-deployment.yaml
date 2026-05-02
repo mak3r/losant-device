@@ -10,13 +10,23 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: {{ include "losant-device.fullname" . }}-gea
+      app: losant-gea
   template:
     metadata:
       labels:
-        app: {{ include "losant-device.fullname" . }}-gea
+        app: losant-gea
     spec:
       serviceAccountName: {{ include "losant-device.fullname" . }}-gea
+      initContainers:
+        - name: wait-for-credentials
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - 'until [ -s /tmp/gea-creds/DEVICE_ID ]; do echo "waiting for GEA credentials secret"; sleep 5; done'
+          volumeMounts:
+            - name: gea-credentials-probe
+              mountPath: /tmp/gea-creds
       containers:
         - name: edge-agent
           image: "{{ .Values.gea.image.repository }}:{{ .Values.gea.image.tag }}"
@@ -56,6 +66,10 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 30
       volumes:
+        - name: gea-credentials-probe
+          secret:
+            secretName: {{ include "losant-device.geaSecretName" . }}
+            optional: true
         - name: gea-data
           persistentVolumeClaim:
             claimName: {{ include "losant-device.fullname" . }}-gea-data
