@@ -9,32 +9,6 @@ Install the losant-device operator and GEA with Helm, then apply the LosantSync 
 
 ---
 
-## Install the LosantSync CRD
-
-> **Required before `helm install`** — The Helm chart does not yet bundle the CRD ([#248](https://github.com/mak3r/losant-device/issues/248)). The `LosantSync` CRD must exist in the cluster before the controller starts, or the controller will crash with `no matches for kind "LosantSync"`.
-
-**Option A — from the repository:**
-
-```bash
-make install
-```
-
-**Option B — directly from the manifests:**
-
-```bash
-kubectl apply -f config/crd/bases/
-```
-
-Verify the CRD is registered before proceeding:
-
-```bash
-kubectl get crd losantsyncs.losant.io
-```
-
-> This step will be removed once [#248](https://github.com/mak3r/losant-device/issues/248) is resolved and the Helm chart bundles the CRD automatically.
-
----
-
 ## Install with Helm
 
 ```bash
