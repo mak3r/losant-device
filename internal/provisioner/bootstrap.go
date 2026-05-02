@@ -117,8 +117,8 @@ func (b *GEABootstrapper) Bootstrap(ctx context.Context, ls *losantv1alpha1.Losa
 	} else {
 		patched := existing.DeepCopy()
 		patched.Data = data
-		if err := b.Client.Patch(ctx, patched, client.MergeFrom(&existing)); err != nil {
-			return fmt.Errorf("patch %s/%s: %w", ns, geaCredentialsSecretName, err)
+		if err := b.Client.Update(ctx, patched); err != nil {
+			return fmt.Errorf("update %s/%s: %w", ns, geaCredentialsSecretName, err)
 		}
 	}
 
