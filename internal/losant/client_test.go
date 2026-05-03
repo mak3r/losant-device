@@ -436,8 +436,8 @@ func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
 	if len(deviceIDs) != 1 || deviceIDs[0] != "dev-xyz" {
 		t.Errorf("deviceIds: got %v, want [dev-xyz]", deviceIDs)
 	}
-	if gotBody["filterType"] != "specific" {
-		t.Errorf("filterType: got %v, want \"specific\"", gotBody["filterType"])
+	if gotBody["filterType"] != "whitelist" {
+		t.Errorf("filterType: got %v, want \"whitelist\"", gotBody["filterType"])
 	}
 }
 
