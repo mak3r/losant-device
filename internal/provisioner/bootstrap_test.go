@@ -262,6 +262,36 @@ func TestBootstrap_DeploymentRestart(t *testing.T) {
 	}
 }
 
+// TestBootstrap_PassesCorrectArgsToCreateAccessKey verifies that Bootstrap
+// forwards the spec's ApplicationID and the provided clusterDeviceID to
+// CreateDeviceAccessKey — regression guard for the #268 405 issue where the
+// wrong arguments could cause an invalid API path or method.
+func TestBootstrap_PassesCorrectArgsToCreateAccessKey(t *testing.T) {
+	mc := losant.NewMockClient()
+	b := &provisioner.GEABootstrapper{
+		Client:       buildFakeClient(),
+		LosantClient: mc,
+	}
+
+	ls := baseLS()
+	ls.Spec.ApplicationID = "app-regression"
+
+	if err := b.Bootstrap(context.Background(), ls, "device-regression"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.CreateDeviceAccessKeyCalls) != 1 {
+		t.Fatalf("expected 1 CreateDeviceAccessKey call, got %d", len(mc.CreateDeviceAccessKeyCalls))
+	}
+	call := mc.CreateDeviceAccessKeyCalls[0]
+	if call.ApplicationID != "app-regression" {
+		t.Errorf("ApplicationID: got %q, want %q", call.ApplicationID, "app-regression")
+	}
+	if call.DeviceID != "device-regression" {
+		t.Errorf("DeviceID: got %q, want %q", call.DeviceID, "device-regression")
+	}
+}
+
 // TestBootstrap_DeploymentNotFound verifies that a missing GEA Deployment returns an error.
 func TestBootstrap_DeploymentNotFound(t *testing.T) {
 	mc := losant.NewMockClient()
