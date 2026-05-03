@@ -1,7 +1,7 @@
 controller:
   image:
     repository: ghcr.io/mak3r/losant-device
-    tag: v0.1.0-alpha.8
+    tag: v0.1.0-alpha.9
     pullPolicy: IfNotPresent
   replicaCount: 1
   resources:
