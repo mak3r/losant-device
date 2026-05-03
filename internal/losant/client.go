@@ -179,7 +179,7 @@ func (c *HTTPClient) CreateDeviceAccessKey(ctx context.Context, applicationID, d
 	payload := map[string]interface{}{
 		"description": name,
 		"deviceIds":   []string{deviceID},
-		"filterType":  "specific",
+		"filterType":  "whitelist",
 	}
 	path := fmt.Sprintf("%s/applications/%s/keys", apiBase, applicationID)
 	body, err := c.doRequest(ctx, http.MethodPost, path, payload)
