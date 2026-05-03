@@ -401,6 +401,100 @@ func TestFindDeviceByName_InvalidJSON(t *testing.T) {
 	}
 }
 
+// --- CreateDeviceAccessKey ---
+
+// TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint asserts that the corrected
+// client sends POST to /applications/{appId}/keys (not the old device-scoped path
+// that returned 405) and includes deviceIds + filterType in the body.
+func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/applications/app-123/keys", func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		writeJSON(w, map[string]interface{}{
+			"keyId":  "kid-1",
+			"key":    "k1",
+			"secret": "s1",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if _, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-xyz", "my-key"); err != nil {
+		t.Fatalf("CreateDeviceAccessKey: unexpected error: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("HTTP method: got %q, want POST", gotMethod)
+	}
+	if gotPath != "/applications/app-123/keys" {
+		t.Errorf("path: got %q, want /applications/app-123/keys", gotPath)
+	}
+	deviceIDs, _ := gotBody["deviceIds"].([]interface{})
+	if len(deviceIDs) != 1 || deviceIDs[0] != "dev-xyz" {
+		t.Errorf("deviceIds: got %v, want [dev-xyz]", deviceIDs)
+	}
+	if gotBody["filterType"] != "specific" {
+		t.Errorf("filterType: got %v, want \"specific\"", gotBody["filterType"])
+	}
+}
+
+func TestCreateDeviceAccessKey_Success(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/keys", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{
+			"keyId":  "key-id-42",
+			"key":    "access-key-value",
+			"secret": "access-secret-value",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	keyID, key, secret, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-abc", "controller-key")
+	if err != nil {
+		t.Fatalf("CreateDeviceAccessKey: unexpected error: %v", err)
+	}
+	if keyID != "key-id-42" {
+		t.Errorf("keyID: got %q, want %q", keyID, "key-id-42")
+	}
+	if key != "access-key-value" {
+		t.Errorf("key: got %q, want %q", key, "access-key-value")
+	}
+	if secret != "access-secret-value" {
+		t.Errorf("secret: got %q, want %q", secret, "access-secret-value")
+	}
+}
+
+// TestCreateDeviceAccessKey_Non2xxError verifies that a non-2xx response surfaces as an error.
+func TestCreateDeviceAccessKey_Non2xxError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"type":"MethodNotAllowed","message":"POST is not allowed"}`, http.StatusMethodNotAllowed)
+	}))
+	defer srv.Close()
+
+	_, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-xyz", "k")
+	if err == nil {
+		t.Fatal("expected error on 405 response, got nil")
+	}
+}
+
+func TestCreateDeviceAccessKey_EmptyKeyInResponse(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/keys", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"keyId": "kid", "key": "", "secret": ""})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-abc", "k")
+	if err == nil {
+		t.Fatal("expected error when key/secret are empty in response, got nil")
+	}
+}
+
 // --- GetDevice: invalid JSON response ---
 
 func TestGetDevice_InvalidJSON(t *testing.T) {
