@@ -17,11 +17,15 @@ limitations under the License.
 package e2e_test
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 )
@@ -584,5 +588,147 @@ var _ = Describe("LosantSync lifecycle", func() {
 			Expect(cond).NotTo(BeNil())
 			Expect(cond.Status).To(Equal(metav1.ConditionTrue))
 		})
+	})
+})
+
+// clusterAttributeNames lists the 13 telemetry attributes expected on a cluster Edge Compute device.
+var clusterAttributeNames = []string{
+	"health_score", "health_status", "total_nodes", "ready_nodes", "unhealthy_nodes",
+	"total_pods", "running_pods", "failed_pods", "pending_pods", "crashloop_pods",
+	"degraded_pvcs", "coredns_healthy", "event_warnings",
+}
+
+// nodeAttributeNames lists the 11 telemetry attributes expected on a node peripheral device.
+var nodeAttributeNames = []string{
+	"health_score", "health_status", "ready", "memory_pressure", "disk_pressure",
+	"pid_pressure", "pod_count", "not_ready_pods", "crashloop_pods",
+	"cpu_request_pct", "mem_request_pct",
+}
+
+// AC-LIFECYCLE-01..04
+// These tests require LOSANT_APP_ID and LOSANT_API_TOKEN env vars and a live cluster with a
+// reachable GEA pod. Skip automatically when real Losant credentials are absent.
+var _ = Describe("LosantSync device lifecycle against real Losant API", func() {
+
+	BeforeEach(func() {
+		skipUnlessRealLosant()
+		ensureTestNamespaceAndSecret(ctx)
+		ensureRealLosantSecret(ctx)
+	})
+
+	// AC-LIFECYCLE-01: fresh CR provisions devices with all expected attribute definitions.
+	It("creates cluster and node devices with all expected attribute definitions", func() {
+		name := uniqueName("lc-attrs")
+		Expect(k8sClient.Create(ctx, newRealLosantSync(name, "5m"))).To(Succeed())
+		DeferCleanup(func() { cleanupLosantSync(ctx, name) })
+
+		Eventually(func() losantv1alpha1.LosantSyncPhase {
+			return getLosantSync(ctx, name).Status.Phase
+		}, 120*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+		current := getLosantSync(ctx, name)
+		appID := os.Getenv("LOSANT_APP_ID")
+
+		clusterDev, status := losantFetchDevice(appID, current.Status.ClusterDeviceID)
+		Expect(status).To(Equal(200))
+		Expect(losantAttrNames(clusterDev)).To(ConsistOf(clusterAttributeNames))
+
+		for nodeName, nodeDeviceID := range current.Status.NodeDevices {
+			nodeDev, s := losantFetchDevice(appID, nodeDeviceID)
+			Expect(s).To(Equal(200), "fetch node device for %s", nodeName)
+			Expect(losantAttrNames(nodeDev)).To(ConsistOf(nodeAttributeNames),
+				"node device for %s should have all expected attributes", nodeName)
+		}
+	})
+
+	// AC-LIFECYCLE-02: operator patches attributes onto a pre-existing device that has none.
+	It("patches all cluster attributes onto a pre-existing device that has no attributes", func() {
+		name := uniqueName("lc-patch")
+		appID := os.Getenv("LOSANT_APP_ID")
+
+		// Pre-create a cluster device with no attributes using the canonical name.
+		bareDeviceID := losantCreateBareDevice(appID,
+			fmt.Sprintf("k8s-cluster-%s", name), "edgeCompute")
+		DeferCleanup(func() { losantDeleteDevice(appID, bareDeviceID) })
+
+		Expect(k8sClient.Create(ctx, newRealLosantSync(name, "5m"))).To(Succeed())
+		DeferCleanup(func() { cleanupLosantSync(ctx, name) })
+
+		Eventually(func() losantv1alpha1.LosantSyncPhase {
+			return getLosantSync(ctx, name).Status.Phase
+		}, 120*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+		clusterDev, status := losantFetchDevice(appID, bareDeviceID)
+		Expect(status).To(Equal(200))
+		Expect(losantAttrNames(clusterDev)).To(ConsistOf(clusterAttributeNames),
+			"operator must patch all cluster attributes onto the pre-existing device")
+	})
+
+	// AC-LIFECYCLE-03: controller recreates a cluster device deleted directly in Losant.
+	// Uses a 1m interval so self-healing completes within the 120s Eventually window.
+	It("recreates a cluster device that was manually deleted from Losant", func() {
+		name := uniqueName("lc-heal")
+		Expect(k8sClient.Create(ctx, newRealLosantSync(name, "1m"))).To(Succeed())
+		DeferCleanup(func() { cleanupLosantSync(ctx, name) })
+
+		Eventually(func() losantv1alpha1.LosantSyncPhase {
+			return getLosantSync(ctx, name).Status.Phase
+		}, 120*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+		appID := os.Getenv("LOSANT_APP_ID")
+		originalDeviceID := getLosantSync(ctx, name).Status.ClusterDeviceID
+		Expect(originalDeviceID).NotTo(BeEmpty())
+
+		losantDeleteDevice(appID, originalDeviceID)
+
+		// Wait for the controller to detect the missing device and recreate it (up to 2× interval).
+		Eventually(func() bool {
+			current := getLosantSync(ctx, name)
+			newID := current.Status.ClusterDeviceID
+			return newID != "" && newID != originalDeviceID &&
+				current.Status.Phase == losantv1alpha1.PhaseActive
+		}, 120*time.Second, pollInterval).Should(BeTrue(),
+			"controller should self-heal by creating a new cluster device")
+
+		newDeviceID := getLosantSync(ctx, name).Status.ClusterDeviceID
+		newDev, status := losantFetchDevice(appID, newDeviceID)
+		Expect(status).To(Equal(200))
+		Expect(losantAttrNames(newDev)).To(ConsistOf(clusterAttributeNames),
+			"recreated device must have all cluster attribute definitions")
+	})
+
+	// AC-LIFECYCLE-04: deleting a CR triggers the finalizer which removes all Losant devices.
+	It("deletes all Losant devices when the CR is deleted", func() {
+		name := uniqueName("lc-finalizer")
+		Expect(k8sClient.Create(ctx, newRealLosantSync(name, "5m"))).To(Succeed())
+
+		Eventually(func() losantv1alpha1.LosantSyncPhase {
+			return getLosantSync(ctx, name).Status.Phase
+		}, 120*time.Second, pollInterval).Should(Equal(losantv1alpha1.PhaseActive))
+
+		current := getLosantSync(ctx, name)
+		clusterDeviceID := current.Status.ClusterDeviceID
+		nodeDeviceIDs := make([]string, 0, len(current.Status.NodeDevices))
+		for _, id := range current.Status.NodeDevices {
+			nodeDeviceIDs = append(nodeDeviceIDs, id)
+		}
+
+		appID := os.Getenv("LOSANT_APP_ID")
+
+		Expect(k8sClient.Delete(ctx, current)).To(Succeed())
+		Eventually(func() bool {
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, &losantv1alpha1.LosantSync{})
+			return apierrors.IsNotFound(err)
+		}, 120*time.Second, pollInterval).Should(BeTrue(),
+			"CR should be fully removed once the finalizer completes device cleanup")
+
+		_, status := losantFetchDevice(appID, clusterDeviceID)
+		Expect(status).To(Equal(404), "cluster device must be deleted from Losant after CR deletion")
+
+		for _, nodeDeviceID := range nodeDeviceIDs {
+			_, s := losantFetchDevice(appID, nodeDeviceID)
+			Expect(s).To(Equal(404),
+				"node device %s must be deleted from Losant after CR deletion", nodeDeviceID)
+		}
 	})
 })
