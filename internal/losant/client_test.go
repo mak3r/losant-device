@@ -411,7 +411,7 @@ func TestFindDeviceByName_InvalidJSON(t *testing.T) {
 
 // TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint asserts that the corrected
 // client sends POST to /applications/{appId}/keys (not the old device-scoped path
-// that returned 405) and includes deviceIds + filterType in the body.
+// that returned 405) and sends filterType "all" (not "whitelist") in the body.
 func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotBody map[string]interface{}
@@ -438,12 +438,8 @@ func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
 	if gotPath != "/applications/app-123/keys" {
 		t.Errorf("path: got %q, want /applications/app-123/keys", gotPath)
 	}
-	deviceIDs, _ := gotBody["deviceIds"].([]interface{})
-	if len(deviceIDs) != 1 || deviceIDs[0] != "dev-xyz" {
-		t.Errorf("deviceIds: got %v, want [dev-xyz]", deviceIDs)
-	}
-	if gotBody["filterType"] != "whitelist" {
-		t.Errorf("filterType: got %v, want \"whitelist\"", gotBody["filterType"])
+	if gotBody["filterType"] != "all" {
+		t.Errorf("filterType: got %v, want \"all\"", gotBody["filterType"])
 	}
 }
 
@@ -484,6 +480,27 @@ func TestCreateDeviceAccessKey_Non2xxError(t *testing.T) {
 	_, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-xyz", "k")
 	if err == nil {
 		t.Fatal("expected error on 405 response, got nil")
+	}
+}
+
+// TestCreateDeviceAccessKey_HTTP400SchemaError verifies that the client propagates a 400
+// schema-validation error from the Losant API. This is a regression guard: the original
+// implementation sent filterType "whitelist" which the live API rejected with 400.
+func TestCreateDeviceAccessKey_HTTP400SchemaError(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		http.Error(w, `{"type":"ValidationError","message":"filterType must be all or none","statusCode":400}`, http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	_, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-xyz", "k")
+	if err == nil {
+		t.Fatal("expected error on 400 response, got nil")
+	}
+
+	if gotBody["filterType"] != "all" {
+		t.Errorf("filterType sent to server: got %v, want \"all\" — regression: client must not send \"whitelist\"", gotBody["filterType"])
 	}
 }
 
