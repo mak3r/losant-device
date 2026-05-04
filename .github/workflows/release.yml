@@ -9,6 +9,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write  # required for OIDC token → Fulcio CA (cosign keyless signing)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -21,6 +22,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3
       - run: make test
       - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:${{ github.ref_name }}
       - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:latest
@@ -32,6 +34,94 @@ jobs:
           echo "$MANIFEST" | grep -q "linux/amd64" || { echo "ERROR: linux/amd64 digest missing from manifest"; exit 1; }
           echo "$MANIFEST" | grep -q "linux/arm64" || { echo "ERROR: linux/arm64 digest missing from manifest"; exit 1; }
           echo "Verified: linux/amd64 and linux/arm64 both present."
+      - name: Sign container image
+        run: |
+          TAG_DIGEST=$(docker buildx imagetools inspect ghcr.io/mak3r/losant-device:${{ github.ref_name }} --format '{{.Manifest.Digest}}')
+          LATEST_DIGEST=$(docker buildx imagetools inspect ghcr.io/mak3r/losant-device:latest --format '{{.Manifest.Digest}}')
+          cosign sign --yes ghcr.io/mak3r/losant-device@${TAG_DIGEST}
+          cosign sign --yes ghcr.io/mak3r/losant-device@${LATEST_DIGEST}
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+
+  publish-chart:
+    runs-on: ubuntu-latest
+    needs: [release]
+    permissions:
+      contents: write
+      packages: write
+      id-token: write  # required for OIDC token → Fulcio CA (cosign keyless signing)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: Inject Chart version from tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          APP_VERSION="${TAG#v}"
+          sed -i "s/^version:.*/version: ${APP_VERSION}/" helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${APP_VERSION}/" helm/Chart.yaml
+      - name: Log in to GHCR Helm registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Package and push Helm chart
+        id: helm-push
+        run: |
+          helm package helm/
+          PUSH_OUTPUT=$(helm push losant-device-*.tgz oci://ghcr.io/mak3r/losant-device/charts 2>&1)
+          echo "${PUSH_OUTPUT}"
+          CHART_DIGEST=$(echo "${PUSH_OUTPUT}" | grep "^Digest:" | awk '{print $2}')
+          echo "digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
+      - name: Sign Helm chart OCI artifact
+        run: |
+          cosign sign --yes ghcr.io/mak3r/losant-device/charts/losant-device@${{ steps.helm-push.outputs.digest }}
+      - name: Upload CRD asset to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat config/crd/bases/*.yaml > crds.yaml
+          gh release upload "${GITHUB_REF_NAME}" crds.yaml
+
+  chart-install-smoke:
+    runs-on: ubuntu-latest
+    needs: [publish-chart]
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+      - name: Create kind cluster
+        run: kind create cluster --wait 60s
+      - name: Log in to GHCR Helm registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Install Helm chart from OCI
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          APP_VERSION="${TAG#v}"
+          helm install losant-device \
+            oci://ghcr.io/mak3r/losant-device/charts/losant-device \
+            --version "${APP_VERSION}" \
+            --create-namespace \
+            --namespace losant-device-system \
+            --wait \
+            --timeout 120s
+      - name: Assert CRD is registered
+        run: kubectl get crd losantsyncs.losant.losant.com
+      - name: Assert controller pod is Running
+        run: |
+          kubectl wait --for=condition=Ready pod \
+            -l control-plane=controller-manager \
+            -n losant-device-system \
+            --timeout=120s
+      - name: Assert chart version matches release tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          APP_VERSION="${TAG#v}"
+          CHART_VERSION=$(helm get metadata losant-device -n losant-device-system -o json | jq -r '.version')
+          if [ "${CHART_VERSION}" != "${APP_VERSION}" ]; then
+            echo "ERROR: chart version '${CHART_VERSION}' does not match expected '${APP_VERSION}'"
+            exit 1
+          fi
+          echo "Chart version verified: ${CHART_VERSION}"

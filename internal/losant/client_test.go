@@ -159,6 +159,9 @@ func TestEnsureClusterDevice_Found(t *testing.T) {
 			Items []Device `json:"items"`
 		}{Items: []Device{{DeviceID: "cluster-dev-id", Name: "k8s-cluster-test-cluster"}}})
 	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/cluster-dev-id", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct{}{})
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -302,6 +305,9 @@ func TestEnsureNodeDevice_Found(t *testing.T) {
 		writeJSON(w, struct {
 			Items []Device `json:"items"`
 		}{Items: []Device{{DeviceID: "existing-node-id", Name: "k8s-node-test-cluster-node-2"}}})
+	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/existing-node-id", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct{}{})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
@@ -509,5 +515,158 @@ func TestGetDevice_InvalidJSON(t *testing.T) {
 	_, err := newTestHTTPClient(srv.URL).GetDevice(context.Background(), "app-123", "dev-bad")
 	if err == nil {
 		t.Fatal("expected error on invalid JSON device response, got nil")
+	}
+}
+
+// --- DeleteDevice ---
+
+func TestDeleteDevice_Success(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /applications/app-123/devices/dev-to-delete", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if err := newTestHTTPClient(srv.URL).DeleteDevice(context.Background(), "app-123", "dev-to-delete"); err != nil {
+		t.Fatalf("DeleteDevice on 200: unexpected error: %v", err)
+	}
+}
+
+func TestDeleteDevice_NotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /applications/app-123/devices/already-gone", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"type":"ResourceNotFound","message":"Device not found"}`, http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if err := newTestHTTPClient(srv.URL).DeleteDevice(context.Background(), "app-123", "already-gone"); err != nil {
+		t.Fatalf("DeleteDevice on 404: expected nil (idempotent), got: %v", err)
+	}
+}
+
+func TestDeleteDevice_ServerError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /applications/app-123/devices/bad-device", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"internal error"}`, http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if err := newTestHTTPClient(srv.URL).DeleteDevice(context.Background(), "app-123", "bad-device"); err == nil {
+		t.Fatal("DeleteDevice on 500: expected error, got nil")
+	}
+}
+
+// --- Attribute population on device creation ---
+
+func TestEnsureClusterDevice_Created_HasAttributes(t *testing.T) {
+	var postBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{})
+	})
+	mux.HandleFunc("POST /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&postBody)
+		writeJSON(w, Device{DeviceID: "new-cluster-attr-id"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if _, err := newTestHTTPClient(srv.URL).EnsureClusterDevice(context.Background(), newTestSpec()); err != nil {
+		t.Fatalf("EnsureClusterDevice: %v", err)
+	}
+	attrs, ok := postBody["attributes"].([]interface{})
+	if !ok {
+		t.Fatalf("POST body missing 'attributes' field; body: %v", postBody)
+	}
+	if len(attrs) != 13 {
+		t.Errorf("cluster attribute count: got %d, want 13", len(attrs))
+	}
+}
+
+func TestEnsureNodeDevice_Created_HasAttributes(t *testing.T) {
+	var postBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{})
+	})
+	mux.HandleFunc("POST /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&postBody)
+		writeJSON(w, Device{DeviceID: "new-node-attr-id"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if _, err := newTestHTTPClient(srv.URL).EnsureNodeDevice(context.Background(), newTestSpec(), "node-1", "gw-123"); err != nil {
+		t.Fatalf("EnsureNodeDevice: %v", err)
+	}
+	attrs, ok := postBody["attributes"].([]interface{})
+	if !ok {
+		t.Fatalf("POST body missing 'attributes' field; body: %v", postBody)
+	}
+	if len(attrs) != 11 {
+		t.Errorf("node attribute count: got %d, want 11", len(attrs))
+	}
+}
+
+// --- Attribute patching when device already exists ---
+
+func TestEnsureClusterDevice_Found_PatchHasAttributes(t *testing.T) {
+	var patchBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{Items: []Device{{DeviceID: "existing-cluster-id", Name: "k8s-cluster-test-cluster"}}})
+	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/existing-cluster-id", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&patchBody)
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if _, err := newTestHTTPClient(srv.URL).EnsureClusterDevice(context.Background(), newTestSpec()); err != nil {
+		t.Fatalf("EnsureClusterDevice: %v", err)
+	}
+	if patchBody == nil {
+		t.Fatal("PATCH handler was not called")
+	}
+	attrs, ok := patchBody["attributes"].([]interface{})
+	if !ok || len(attrs) != 13 {
+		t.Errorf("PATCH body: expected 13 cluster attributes, got: %v", patchBody["attributes"])
+	}
+}
+
+func TestEnsureNodeDevice_Found_PatchHasAttributes(t *testing.T) {
+	var patchBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/devices", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct {
+			Items []Device `json:"items"`
+		}{Items: []Device{{DeviceID: "existing-node-attr-id", Name: "k8s-node-test-cluster-node-4"}}})
+	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/existing-node-attr-id", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&patchBody)
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	if _, err := newTestHTTPClient(srv.URL).EnsureNodeDevice(context.Background(), newTestSpec(), "node-4", "gw-xyz"); err != nil {
+		t.Fatalf("EnsureNodeDevice: %v", err)
+	}
+	if patchBody == nil {
+		t.Fatal("PATCH handler was not called")
+	}
+	attrs, ok := patchBody["attributes"].([]interface{})
+	if !ok || len(attrs) != 11 {
+		t.Errorf("PATCH body: expected 11 node attributes, got: %v", patchBody["attributes"])
 	}
 }
