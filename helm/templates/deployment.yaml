@@ -19,7 +19,7 @@ spec:
       serviceAccountName: {{ include "losant-device.serviceAccountName" . }}
       containers:
         - name: manager
-          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag }}"
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           env:
             - name: GEA_DEPLOYMENT_REF
