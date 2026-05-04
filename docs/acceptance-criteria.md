@@ -229,7 +229,54 @@ These criteria require real Losant credentials (`LOSANT_APP_ID`, `LOSANT_API_TOK
 
 ---
 
-## 11. E2E Test Coverage Map
+## 11. GitOps-Compatible Deployment (Source-Independent)
+
+This scenario validates that the operator can be installed and operated without any local source tree, using only the published Helm OCI chart and the CRD asset bundled in the GitHub Release.
+
+**Prerequisites:**
+- A k3s or kind cluster is available with no source tree present
+- Helm 3.8 or later is installed (`helm version`)
+- The target release tag (e.g. `v0.1.0`) has been published to `ghcr.io` and the corresponding GitHub Release exists
+
+### Testable Statements — GitOps Deployment
+
+- **AC-GITOPS-01**: Installing the CRDs via `kubectl apply -f https://github.com/mak3r/losant-device/releases/download/<TAG>/crds.yaml` MUST succeed without error and the `LosantSync` CRD MUST be present in the cluster.
+- **AC-GITOPS-02**: Installing the operator via `helm install losant-device oci://ghcr.io/mak3r/losant-device/charts/losant-device:<VERSION> --create-namespace --namespace losant-device-system` MUST succeed and the controller pod MUST reach `Running` state within 60 seconds.
+- **AC-GITOPS-03**: `helm get metadata losant-device -n losant-device-system` MUST report a chart version that matches the release tag.
+- **AC-GITOPS-04**: A `LosantSync` CR applied after the Helm install MUST reach phase `Active` and begin reporting metrics, with no files from the source tree required at any point.
+
+### Manual Verification Steps
+
+```bash
+# 1. Install CRDs from the GitHub Release asset
+kubectl apply -f https://github.com/mak3r/losant-device/releases/download/<TAG>/crds.yaml
+
+# 2. Verify CRD is registered
+kubectl get crd losantsyncs.losant.mak3r.io
+
+# 3. Install the operator via OCI chart (Helm 3.8+)
+helm install losant-device \
+  oci://ghcr.io/mak3r/losant-device/charts/losant-device:<VERSION> \
+  --create-namespace \
+  --namespace losant-device-system \
+  --set provisioning.secretRef.name=losant-credentials \
+  --set provisioning.secretRef.namespace=losant-device-system
+
+# 4. Confirm controller pod is Running within 60s
+kubectl -n losant-device-system wait --for=condition=ready pod \
+  -l app.kubernetes.io/name=losant-device --timeout=60s
+
+# 5. Confirm chart version matches the release tag
+helm get metadata losant-device -n losant-device-system | grep version
+
+# 6. Apply a LosantSync CR and wait for Active
+kubectl apply -f losantsync-sample.yaml
+kubectl wait losantsync <name> --for=jsonpath='{.status.phase}'=Active --timeout=120s
+```
+
+---
+
+## 12. E2E Test Coverage Map
 
 | Criteria | Test File | Test Description | Status |
 |---|---|---|---|
@@ -259,4 +306,5 @@ These criteria require real Losant credentials (`LOSANT_APP_ID`, `LOSANT_API_TOK
 | AC-LIFECYCLE-02 | lifecycle_test.go | "patches all cluster attributes onto a pre-existing device that has no attributes" | Implemented |
 | AC-LIFECYCLE-03 | lifecycle_test.go | "recreates a cluster device that was manually deleted from Losant" | Implemented |
 | AC-LIFECYCLE-04 | lifecycle_test.go | "deletes all Losant devices when the CR is deleted" | Implemented |
+| AC-GITOPS-01..04 | — | Source-independent Helm OCI install + Active phase | Manual (no E2E automation; requires published release) |
 | CRD validation | validation_test.go | CEL rules, required fields, port range, defaults | Implemented |
