@@ -193,7 +193,43 @@ Look for lines containing:
 
 ---
 
-## 10. E2E Test Coverage Map
+## 10. Full Device Lifecycle (Attribute Definitions, Self-Healing, Cleanup)
+
+These criteria require real Losant credentials (`LOSANT_APP_ID`, `LOSANT_API_TOKEN`) and a live cluster with a reachable GEA pod. Tests skip automatically when credentials are absent.
+
+### Cluster device attributes (13)
+
+`health_score`, `health_status`, `total_nodes`, `ready_nodes`, `unhealthy_nodes`, `total_pods`, `running_pods`, `failed_pods`, `pending_pods`, `crashloop_pods`, `degraded_pvcs`, `coredns_healthy`, `event_warnings`
+
+### Node device attributes (11)
+
+`health_score`, `health_status`, `ready`, `memory_pressure`, `disk_pressure`, `pid_pressure`, `pod_count`, `not_ready_pods`, `crashloop_pods`, `cpu_request_pct`, `mem_request_pct`
+
+### Testable Statements — Device Lifecycle
+
+- **AC-LIFECYCLE-01**: When a `LosantSync` CR reaches phase `Active` on a clean application (no existing devices), the cluster Edge Compute device MUST have all 13 cluster attribute definitions and each node peripheral device MUST have all 11 node attribute definitions.
+  - *Preconditions*: No existing Losant devices for this cluster name. Valid KUBECONFIG, LOSANT_APP_ID, LOSANT_API_TOKEN. GEA reachable.
+  - *Steps*: Apply CR → wait for `Active` → `GET /applications/{appID}/devices/{clusterDeviceID}` → assert 13 attributes → repeat for each node device ID in `Status.NodeDevices`.
+  - *Expected*: All cluster and node devices carry the expected attribute schema.
+
+- **AC-LIFECYCLE-02**: When a cluster device already exists in Losant with no attributes, the operator MUST patch all 13 cluster attribute definitions onto it during the next `EnsureClusterDevice` call.
+  - *Preconditions*: A device named `k8s-cluster-<clusterName>` exists in Losant with no attributes. Valid credentials and reachable GEA.
+  - *Steps*: Pre-create bare device → apply CR with matching `clusterName` → wait for `Active` → `GET` the pre-existing device → assert all 13 attributes present.
+  - *Expected*: The pre-existing device's attribute set is augmented to the full cluster schema without recreation.
+
+- **AC-LIFECYCLE-03**: When the cluster device is deleted directly from Losant, the controller MUST detect the absence on the next reconcile cycle and recreate it with a new device ID and all 13 cluster attribute definitions. Phase MUST return to `Active`.
+  - *Preconditions*: CR is `Active`. Valid credentials. GEA reachable.
+  - *Steps*: Wait for `Active` → note `Status.ClusterDeviceID` → delete device via Losant API → wait up to 2× the configured interval → assert `Status.ClusterDeviceID` changed AND phase is `Active` → fetch new device → assert 13 attributes.
+  - *Expected*: Controller self-heals by recreating the missing device within one reconcile cycle.
+
+- **AC-LIFECYCLE-04**: Deleting a `LosantSync` CR MUST trigger the `losant.io/device-cleanup` finalizer, which MUST delete the cluster device and all node devices from Losant before the CR is removed from the API server.
+  - *Preconditions*: CR is `Active`. Valid credentials.
+  - *Steps*: Note `Status.ClusterDeviceID` and all `Status.NodeDevices` values → delete CR → wait for CR to be fully gone (no finalizer remaining) → `GET` each device ID → assert all return 404.
+  - *Expected*: All registered Losant devices are deleted; none return 200 after CR removal.
+
+---
+
+## 11. E2E Test Coverage Map
 
 | Criteria | Test File | Test Description | Status |
 |---|---|---|---|
@@ -219,4 +255,8 @@ Look for lines containing:
 | AC-SUSP-03 | lifecycle_test.go | No HTTP calls while suspended | Implemented |
 | AC-SUSP-04 | lifecycle_test.go | Resume from suspension → Provisioning | Implemented |
 | AC-SUSP-05 | lifecycle_test.go | "phase remains Suspended when reconciled repeatedly" | Implemented |
+| AC-LIFECYCLE-01 | lifecycle_test.go | "creates cluster and node devices with all expected attribute definitions" | Implemented |
+| AC-LIFECYCLE-02 | lifecycle_test.go | "patches all cluster attributes onto a pre-existing device that has no attributes" | Implemented |
+| AC-LIFECYCLE-03 | lifecycle_test.go | "recreates a cluster device that was manually deleted from Losant" | Implemented |
+| AC-LIFECYCLE-04 | lifecycle_test.go | "deletes all Losant devices when the CR is deleted" | Implemented |
 | CRD validation | validation_test.go | CEL rules, required fields, port range, defaults | Implemented |
