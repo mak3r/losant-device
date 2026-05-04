@@ -124,13 +124,9 @@ jobs:
             --create-namespace \
             --namespace losant-device-system
       - name: Assert CRD is registered
-        run: kubectl get crd losantsyncs.losant.losant.com
-      - name: Assert controller pod is scheduled
-        run: |
-          kubectl wait --for=condition=PodScheduled pod \
-            -l control-plane=controller-manager \
-            -n losant-system \
-            --timeout=60s
+        run: kubectl wait --for=condition=Established crd/losantsyncs.losant.losant.com --timeout=60s
+      - name: Assert controller Deployment was created
+        run: kubectl get deployment -n losant-system -l control-plane=controller-manager
       - name: Assert chart version matches release tag
         run: |
           TAG="${GITHUB_REF_NAME}"
