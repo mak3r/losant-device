@@ -131,7 +131,7 @@ jobs:
         run: |
           kubectl wait --for=condition=Ready pod \
             -l control-plane=controller-manager \
-            -n losant-device-system \
+            -n losant-system \
             --timeout=120s
       - name: Assert chart version matches release tag
         run: |
