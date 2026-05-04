@@ -32,18 +32,24 @@ import (
 type MockClient struct {
 	mu sync.Mutex
 
-	PingFunc                func(ctx context.Context) error
-	EnsureClusterDeviceFunc func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (string, error)
-	EnsureNodeDeviceFunc    func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error)
-	UpdateDeviceTagsFunc    func(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
-	GetDeviceFunc           func(ctx context.Context, applicationID, deviceID string) (*Device, error)
+	PingFunc                  func(ctx context.Context) error
+	EnsureClusterDeviceFunc   func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (string, error)
+	EnsureNodeDeviceFunc      func(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error)
+	UpdateDeviceTagsFunc      func(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
+	GetDeviceFunc             func(ctx context.Context, applicationID, deviceID string) (*Device, error)
+	CreateDeviceAccessKeyFunc func(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error)
+	PatchDeviceAttributesFunc func(ctx context.Context, applicationID, deviceID string, attrs []DeviceAttribute) error
+	DeleteDeviceFunc          func(ctx context.Context, applicationID, deviceID string) error
 
 	// Recorded calls — read after test assertions.
-	PingCalls                []struct{}
-	EnsureClusterDeviceCalls []EnsureClusterDeviceCall
-	EnsureNodeDeviceCalls    []EnsureNodeDeviceCall
-	UpdateDeviceTagsCalls    []UpdateDeviceTagsCall
-	GetDeviceCalls           []GetDeviceCall
+	PingCalls                  []struct{}
+	EnsureClusterDeviceCalls   []EnsureClusterDeviceCall
+	EnsureNodeDeviceCalls      []EnsureNodeDeviceCall
+	UpdateDeviceTagsCalls      []UpdateDeviceTagsCall
+	GetDeviceCalls             []GetDeviceCall
+	CreateDeviceAccessKeyCalls []CreateDeviceAccessKeyCall
+	PatchDeviceAttributesCalls []PatchDeviceAttributesCall
+	DeleteDeviceCalls          []DeleteDeviceCall
 }
 
 // EnsureClusterDeviceCall records one invocation of EnsureClusterDevice.
@@ -67,6 +73,26 @@ type UpdateDeviceTagsCall struct {
 
 // GetDeviceCall records one invocation of GetDevice.
 type GetDeviceCall struct {
+	ApplicationID string
+	DeviceID      string
+}
+
+// CreateDeviceAccessKeyCall records one invocation of CreateDeviceAccessKey.
+type CreateDeviceAccessKeyCall struct {
+	ApplicationID string
+	DeviceID      string
+	Name          string
+}
+
+// PatchDeviceAttributesCall records one invocation of PatchDeviceAttributes.
+type PatchDeviceAttributesCall struct {
+	ApplicationID string
+	DeviceID      string
+	Attrs         []DeviceAttribute
+}
+
+// DeleteDeviceCall records one invocation of DeleteDevice.
+type DeleteDeviceCall struct {
 	ApplicationID string
 	DeviceID      string
 }
@@ -99,6 +125,15 @@ func (m *MockClient) SetError(err error) {
 	m.GetDeviceFunc = func(_ context.Context, _, _ string) (*Device, error) {
 		return nil, err
 	}
+	m.CreateDeviceAccessKeyFunc = func(_ context.Context, _, _, _ string) (string, string, string, error) {
+		return "", "", "", err
+	}
+	m.PatchDeviceAttributesFunc = func(_ context.Context, _, _ string, _ []DeviceAttribute) error {
+		return err
+	}
+	m.DeleteDeviceFunc = func(_ context.Context, _, _ string) error {
+		return err
+	}
 }
 
 // CallCount returns the total number of calls recorded across all methods.
@@ -109,7 +144,10 @@ func (m *MockClient) CallCount() int {
 		len(m.EnsureClusterDeviceCalls) +
 		len(m.EnsureNodeDeviceCalls) +
 		len(m.UpdateDeviceTagsCalls) +
-		len(m.GetDeviceCalls)
+		len(m.GetDeviceCalls) +
+		len(m.CreateDeviceAccessKeyCalls) +
+		len(m.PatchDeviceAttributesCalls) +
+		len(m.DeleteDeviceCalls)
 }
 
 // Reset clears all recorded calls and resets all HandlerFuncs to defaults.
@@ -121,11 +159,17 @@ func (m *MockClient) Reset() {
 	m.EnsureNodeDeviceFunc = nil
 	m.UpdateDeviceTagsFunc = nil
 	m.GetDeviceFunc = nil
+	m.CreateDeviceAccessKeyFunc = nil
+	m.PatchDeviceAttributesFunc = nil
+	m.DeleteDeviceFunc = nil
 	m.PingCalls = nil
 	m.EnsureClusterDeviceCalls = nil
 	m.EnsureNodeDeviceCalls = nil
 	m.UpdateDeviceTagsCalls = nil
 	m.GetDeviceCalls = nil
+	m.CreateDeviceAccessKeyCalls = nil
+	m.PatchDeviceAttributesCalls = nil
+	m.DeleteDeviceCalls = nil
 }
 
 // Ping implements LosantClient.
@@ -198,4 +242,54 @@ func (m *MockClient) GetDevice(ctx context.Context, applicationID, deviceID stri
 		return fn(ctx, applicationID, deviceID)
 	}
 	return &Device{DeviceID: deviceID}, nil
+}
+
+// CreateDeviceAccessKey implements LosantClient.
+func (m *MockClient) CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error) {
+	m.mu.Lock()
+	m.CreateDeviceAccessKeyCalls = append(m.CreateDeviceAccessKeyCalls, CreateDeviceAccessKeyCall{
+		ApplicationID: applicationID,
+		DeviceID:      deviceID,
+		Name:          name,
+	})
+	fn := m.CreateDeviceAccessKeyFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, applicationID, deviceID, name)
+	}
+	return "mock-key-id", "mock-access-key", "mock-access-secret", nil
+}
+
+// PatchDeviceAttributes implements LosantClient.
+func (m *MockClient) PatchDeviceAttributes(ctx context.Context, applicationID, deviceID string, attrs []DeviceAttribute) error {
+	m.mu.Lock()
+	m.PatchDeviceAttributesCalls = append(m.PatchDeviceAttributesCalls, PatchDeviceAttributesCall{
+		ApplicationID: applicationID,
+		DeviceID:      deviceID,
+		Attrs:         attrs,
+	})
+	fn := m.PatchDeviceAttributesFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, applicationID, deviceID, attrs)
+	}
+	return nil
+}
+
+// DeleteDevice implements LosantClient.
+func (m *MockClient) DeleteDevice(ctx context.Context, applicationID, deviceID string) error {
+	m.mu.Lock()
+	m.DeleteDeviceCalls = append(m.DeleteDeviceCalls, DeleteDeviceCall{
+		ApplicationID: applicationID,
+		DeviceID:      deviceID,
+	})
+	fn := m.DeleteDeviceFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, applicationID, deviceID)
+	}
+	return nil
 }

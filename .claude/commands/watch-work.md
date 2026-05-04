@@ -12,11 +12,11 @@ Parse `$ARGUMENTS` as one of:
 | `<persona> <minutes>` | Work continuously, polling every ~4.5 min for `<minutes>` minutes |
 | `<persona> until:<iso_timestamp>` | Work continuously until absolute deadline (used by self-scheduling wake-ups) |
 
-Valid persona names: `developer`, `test-engineer`, `security`, `qa`, `gitops-manager`, `docs`, `merge-manager`, `product-designer`
+Valid persona names: `developer`, `test-engineer`, `security`, `qa`, `gitops-manager`, `docs`, `merge-manager`, `product-designer`, `triage`
 
 If the persona name is not in that list, stop immediately and print:
 ```
-Unknown persona: "<name>". Valid personas: developer, test-engineer, security, qa, gitops-manager, docs, merge-manager, product-designer
+Unknown persona: "<name>". Valid personas: developer, test-engineer, security, qa, gitops-manager, docs, merge-manager, product-designer, triage
 ```
 Do not proceed further.
 
@@ -36,6 +36,8 @@ You ARE the `<persona>`. Read `CLAUDE.md` now to confirm:
 - **developer**: Valid starting states are `develop` or `feature/developer/*`. If on `develop`, you will create a feature branch in Step 4 when picking up an issue. If on `feature/developer/<name>`, continue work on that branch. If on any other branch, stop and tell the user.
 - **test-engineer**: Valid starting states are `develop`, `feature/developer/*`, or `persona/test-engineer`. You will select the correct branch in Step 2 based on available work. If on any other branch, stop and tell the user.
 - **All other personas**: The current branch must match your persona's designated branch exactly. If not, tell the user which branch to switch to and stop.
+
+If persona is `triage`: print "The triage persona is invoked via /triage, not /watch-work. Run /triage instead." and stop.
 
 ---
 
@@ -170,7 +172,12 @@ For the selected item:
 
    **Do not comment with a commit SHA or close the issue until the handoff action is complete.**
 
-6. **Update the issue/PR:** comment with a one-line summary of what was done and the verified commit SHA.
+6. **Update the issue/PR:** comment must include all of the following — do not summarize or paraphrase, paste the actual output:
+   - Output of `git log --oneline -1` (proves the commit exists with its real message and SHA)
+   - PR URL (from `gh pr create` output or `gh pr view --json url --jq '.url'`)
+   - For any file-level fix: output of a `grep` or `head` command confirming the change is present in the file (e.g. `grep '^FROM golang:' Dockerfile`)
+
+   Fabricated or assumed output will be caught by the merge-manager. If you cannot produce real output, the commit did not happen — do not close the issue.
 
 ---
 
@@ -183,7 +190,7 @@ After completing an item (or finding an empty queue):
 **Watch mode:**
 - Is `now < end_time`?
   - **Yes and work was just completed**: immediately return to Step 2 to check for more work.
-  - **Yes and queue was empty**: call `ScheduleWakeup` with `delaySeconds: 270`, `reason: "Polling for new work for <persona>"`, `prompt: "/watch-work <persona> until:<end_time_iso>"`
+  - **Yes and queue was empty**: call `ScheduleWakeup` with `delaySeconds: 270`, `reason: "Polling for new work for <persona>"`, `prompt: "Resume watch-work: you are the <persona> persona. Continue from Step 2 — scan for open issues and PRs, pick the highest-priority item, do the work, then loop. Session ends at <end_time_iso>. Do not use slash commands; invoke the watch-work skill directly via the Skill tool with skill name 'watch-work' and args '<persona> until:<end_time_iso>'."`
   - **No**: print `Session complete for <persona>. Items completed this session: <N>.` and stop.
 
 ---

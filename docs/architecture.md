@@ -224,10 +224,11 @@ Single device selected by device ID context variable. Time-series CPU%, memory%,
 The controller ClusterRole requires:
 
 ```yaml
-- get/list/watch: nodes, pods, persistentvolumeclaims, events, deployments
-- get/update/patch: losantsyncs, losantsyncs/status, losantsyncs/finalizers
-- get: secrets (provisioning credentials only)
-- get/list/watch/create/update/patch: leases (leader election)
+- create/get/list/patch/watch: events
+- get/list/watch: nodes, pods, persistentvolumeclaims, secrets, deployments
+- get/patch/update/list/watch: losantsyncs
+- get/patch/update: losantsyncs/status
+- create/get/list/patch/update/watch: leases (leader election)
 ```
 
 The GEA pod has its own ServiceAccount with no Kubernetes API permissions — it only communicates outbound to `broker.losant.com`.
