@@ -159,6 +159,9 @@ func TestEnsureClusterDevice_Found(t *testing.T) {
 			Items []Device `json:"items"`
 		}{Items: []Device{{DeviceID: "cluster-dev-id", Name: "k8s-cluster-test-cluster"}}})
 	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/cluster-dev-id", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct{}{})
+	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
@@ -302,6 +305,9 @@ func TestEnsureNodeDevice_Found(t *testing.T) {
 		writeJSON(w, struct {
 			Items []Device `json:"items"`
 		}{Items: []Device{{DeviceID: "existing-node-id", Name: "k8s-node-test-cluster-node-2"}}})
+	})
+	mux.HandleFunc("PATCH /applications/app-123/devices/existing-node-id", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, struct{}{})
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

@@ -48,7 +48,10 @@ var testScheme = func() *runtime.Scheme {
 
 func baseLS(name string) *losantv1alpha1.LosantSync {
 	return &losantv1alpha1.LosantSync{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       name,
+			Finalizers: []string{"losant.io/device-cleanup"},
+		},
 		Spec: losantv1alpha1.LosantSyncSpec{
 			ApplicationID: "app-123",
 			ClusterName:   "test-cluster",
