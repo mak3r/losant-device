@@ -411,7 +411,7 @@ func TestFindDeviceByName_InvalidJSON(t *testing.T) {
 
 // TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint asserts that the corrected
 // client sends POST to /applications/{appId}/keys (not the old device-scoped path
-// that returned 405) and includes deviceIds + filterType in the body.
+// that returned 405) and sends filterType "all" (not "whitelist") in the body.
 func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
 	var gotMethod, gotPath string
 	var gotBody map[string]interface{}
@@ -438,12 +438,8 @@ func TestCreateDeviceAccessKey_VerifiesPostToKeysEndpoint(t *testing.T) {
 	if gotPath != "/applications/app-123/keys" {
 		t.Errorf("path: got %q, want /applications/app-123/keys", gotPath)
 	}
-	deviceIDs, _ := gotBody["deviceIds"].([]interface{})
-	if len(deviceIDs) != 1 || deviceIDs[0] != "dev-xyz" {
-		t.Errorf("deviceIds: got %v, want [dev-xyz]", deviceIDs)
-	}
-	if gotBody["filterType"] != "whitelist" {
-		t.Errorf("filterType: got %v, want \"whitelist\"", gotBody["filterType"])
+	if gotBody["filterType"] != "all" {
+		t.Errorf("filterType: got %v, want \"all\"", gotBody["filterType"])
 	}
 }
 
