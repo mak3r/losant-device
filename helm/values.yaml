@@ -1,7 +1,7 @@
 controller:
   image:
     repository: ghcr.io/mak3r/losant-device
-    tag: v0.1.0-alpha.9
+    tag: ""  # defaults to Chart.AppVersion, which the release pipeline sets from the git tag
     pullPolicy: IfNotPresent
   replicaCount: 1
   resources:

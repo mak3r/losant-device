@@ -3,7 +3,7 @@ name: losant-device
 description: Kubernetes operator that monitors cluster health and reports metrics to the Losant IoT platform
 type: application
 version: 0.1.0
-appVersion: v0.1.0-alpha.9
+appVersion: v0.1.0-alpha.12
 keywords:
   - losant
   - iot

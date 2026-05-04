@@ -78,6 +78,11 @@ jobs:
       - name: Sign Helm chart OCI artifact
         run: |
           cosign sign --yes ghcr.io/mak3r/losant-device/charts/losant-device@${{ steps.helm-push.outputs.digest }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Generate CRD manifests
+        run: make manifests
       - name: Upload CRD asset to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
