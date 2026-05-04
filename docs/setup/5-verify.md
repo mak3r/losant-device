@@ -111,7 +111,7 @@ Fix: In Losant → **Workflows** → select your workflow → click **Deploy**. 
 [warn] Unable to connect to mqtts://broker.losant.com, access key/secret rejected.
 ```
 
-See [docs/runbook.md](../runbook.md#gea-access-keysecret-rejected) for full diagnosis steps.
+See [Troubleshooting](7-troubleshooting.md#gea-access-key-rejected-after-bootstrap) for full diagnosis steps.
 
 ---
 
@@ -129,4 +129,4 @@ See [docs/architecture.md](../architecture.md#dashboard-hierarchy) for the full 
 
 ## Setup complete
 
-The operator is deployed and reporting cluster health to Losant. For ongoing operations, see [docs/runbook.md](../runbook.md).
+The operator is deployed and reporting cluster health to Losant. For diagnosis of any issues, see [Troubleshooting](7-troubleshooting.md).

@@ -12,6 +12,7 @@ This guide walks through deploying the losant-device operator and connecting it 
 | [4. Edge Workflow](4-losant-workflow.md) | Losant UI | Create and deploy Edge Workflow |
 | [5. Verify](5-verify.md) | Terminal + Losant UI | Confirm data is flowing |
 | [6. Cleanup](6-cleanup.md) | Terminal + Losant UI | Teardown and reset (when needed) |
+| [7. Troubleshooting](7-troubleshooting.md) | Terminal | Diagnose GEA bootstrap and common failures |
 
 **[Start here → Step 1: Losant Application](1-losant-application.md)**
 
