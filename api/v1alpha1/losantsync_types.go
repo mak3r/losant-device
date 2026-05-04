@@ -148,7 +148,7 @@ type LosantSyncStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="GEA",type=string,JSONPath=`.status.conditions[?(@.type=="GEAReachable")].status`
 // +kubebuilder:printcolumn:name="Last Sync",type=date,JSONPath=`.status.lastSyncTime`
-// +kubebuilder:printcolumn:name="Next Sync",type=string,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Next Sync",type=date,JSONPath=`.status.nextScheduledTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // LosantSync is the Schema for the losantsyncs API.
