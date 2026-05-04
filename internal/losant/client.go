@@ -197,13 +197,13 @@ func (c *HTTPClient) GetDevice(ctx context.Context, applicationID, deviceID stri
 	return &dev, nil
 }
 
-// CreateDeviceAccessKey creates a Losant access key scoped to deviceID and returns
-// the keyID, key, and secret. The secret is shown only in this response.
+// CreateDeviceAccessKey creates a Losant access key and returns the keyID, key, and secret.
+// The secret is shown only in this response. filterType "all" is used because the live API
+// rejects "whitelist" with a schema-mismatch error (400).
 func (c *HTTPClient) CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error) {
 	payload := map[string]interface{}{
 		"description": name,
-		"deviceIds":   []string{deviceID},
-		"filterType":  "whitelist",
+		"filterType":  "all",
 	}
 	path := fmt.Sprintf("%s/applications/%s/keys", apiBase, applicationID)
 	body, err := c.doRequest(ctx, http.MethodPost, path, payload)
