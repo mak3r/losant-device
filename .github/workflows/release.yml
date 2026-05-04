@@ -56,6 +56,11 @@ jobs:
         run: |
           helm package helm/
           helm push losant-device-*.tgz oci://ghcr.io/mak3r/losant-device/charts
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Generate CRD manifests
+        run: make manifests
       - name: Upload CRD asset to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
