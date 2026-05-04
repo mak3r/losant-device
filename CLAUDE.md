@@ -22,6 +22,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 | **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 | **product-designer** | `persona/product-designer` | `.claude/plans/**`, GitHub Issues (create only), `docs/architecture.md` (joint with docs) |
+| **triage** | — (no commits) | Creates GitHub issues only; conducts human intake interview |
 
 ### Hard Rules
 
@@ -32,6 +33,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 - **docs** never modifies `*.go` files or `helm/templates/**`
 - **merge-manager** never commits code of any kind
 - **product-designer** never modifies source files of any kind; creates plans and GitHub issues only
+- **triage** never commits code, never modifies files, never creates plans; creates GitHub issues only after human confirmation
 
 ## Merge Manager Rules
 
@@ -60,6 +62,40 @@ The product designer is a trusted advisor and orchestrator, not an implementer. 
 
 To invoke: ask Claude to "act as product-designer" or check out `persona/product-designer`.
 
+## Triage Agent Rules
+
+The triage agent is an intake specialist, not an implementer. When invoked it:
+
+1. Conducts an interactive conversation to fully understand the issue being reported
+2. Asks clarifying questions until it has sufficient information to produce a complete report
+3. Determines the correct persona(s), phase, and type for each issue
+4. Presents a draft of every issue to the human for confirmation before creating anything
+5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
+6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `type/bug` AND `persona/test-engineer` + `type/task`)
+7. Never commits code, never modifies any file, never creates `.claude/plans/` documents
+
+To invoke: run the `/triage` Claude Code skill.
+
+### Triage Routing Table
+
+| Symptom | Primary Issue | Secondary Issue |
+|---|---|---|
+| Code crash / broken functionality | `persona/developer` + `type/bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
+| Usability confusion / unclear docs | `persona/docs` + `type/task` | — |
+| Security concern / RBAC / credential exposure | `persona/security` + `type/security` | — |
+| Architecture question / new feature design | `persona/product-designer` + `type/task` | — |
+| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `type/bug` | — |
+| E2E / acceptance test failure | `persona/qa` + `type/bug` | — |
+
+### Phase Determination
+
+| Affected Component | Phase Label |
+|---|---|
+| `go.mod`, `Makefile`, `.github/workflows/**`, CI pipeline, module scaffolding | `phase/1-foundation` |
+| `internal/controller/**`, `internal/monitor/store.go`, `internal/scheduler/**`, `internal/gea/**` | `phase/2-core-logic` |
+| `internal/losant/**`, `internal/provisioner/**`, `api/v1alpha1/**`, Losant REST API, GEA MQTT | `phase/3-integration` |
+| `config/rbac/**`, `test/e2e/**`, `docs/runbook.md`, `docs/acceptance-criteria.md`, release pipeline | `phase/4-hardening` |
+
 ## Test Engineer Pairing Model
 
 The test engineer does not have an independent feature branch. Instead:
@@ -80,6 +116,49 @@ Runs automatically via `.github/workflows/docs-agent.yml` on every merged PR. It
 - Never touches `*.go`, `*_test.go`, or `helm/templates/**`
 
 To manually trigger a docs pass: use the `/docs-refresh` Claude Code skill.
+
+## Handoff Rules
+
+**A persona's work is not complete until the next persona in the chain can find and act on it.**
+
+Finishing your own file edits and committing is necessary but not sufficient. If your work creates a dependency for another persona, you must hand off before closing the issue.
+
+### General rule (applies to all personas)
+
+After completing work that unblocks another persona, choose one of:
+
+1. **Same issue, next persona**: Remove your `persona/<name>` label from the issue, add `persona/<next>` label, and comment with what was done and exactly what the next persona must do.
+2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and `type/<task|bug|security>` with explicit instructions, then close your issue.
+
+Without a handoff, the queue-based `watch-work` model breaks — agents only pick up issues labeled for their persona.
+
+### Re-label vs. new issue decision rule
+
+**Re-label** when the next persona is doing a second stage of the same change (the existing issue title still describes the work). **Open a new issue** when the next persona's work is distinct or additive (the existing title would not describe it).
+
+Decision shortcut: "Can the existing issue title describe what the next persona must do?" If yes → re-label. If no → new issue.
+
+Examples:
+- Security approves RBAC change → developer adds marker: **re-label** (same change, two stages)
+- Merge-manager merges PR → docs updates README: **new issue** (different scope)
+
+### Security → Developer handoff (example)
+
+When the security persona approves an RBAC change:
+1. Update `config/rbac/role.yaml` and commit to `persona/security`
+2. Comment on the issue with the approved verbs and the exact `// +kubebuilder:rbac` markers the developer must add
+3. **Re-label** the issue from `persona/security` to `persona/developer` — so the developer's `watch-work` queue picks it up
+
+Step 3 is mandatory. Without it, the developer never sees the work.
+
+## Definition of Done
+
+Before closing any issue or PR, every persona must verify all of the following:
+
+1. Changes are within this persona's designated file scope (from the table in **Personas and Branch Ownership**).
+2. Work is committed; where applicable, tests pass (`make test` for Go changes; `make manifests && git diff --exit-code config/rbac/role.yaml` for manifest changes).
+3. The issue or PR has a one-line summary comment linking the commit SHA.
+4. Handoff is complete — if this work unblocks another persona, that persona's queue has been updated (re-labeled issue or new issue with explicit instructions).
 
 ## Standard Commands
 
@@ -149,3 +228,5 @@ When creating issues, always apply:
 - A `type/task`, `type/bug`, or `type/security` label
 
 The merge manager uses these labels to route notifications and gate PRs.
+
+The triage agent does not apply a `persona/triage` label. It creates issues for other personas — it never owns an issue itself.

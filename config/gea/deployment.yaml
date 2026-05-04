@@ -16,6 +16,16 @@ spec:
         app: losant-gea
     spec:
       serviceAccountName: losant-gea
+      initContainers:
+        - name: wait-for-credentials
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - 'until [ -s /tmp/gea-creds/DEVICE_ID ]; do echo "waiting for GEA credentials secret"; sleep 5; done'
+          volumeMounts:
+            - name: gea-credentials-probe
+              mountPath: /tmp/gea-creds
       containers:
         - name: edge-agent
           image: losant/edge-agent:latest
@@ -50,19 +60,21 @@ spec:
             - name: gea-data
               mountPath: /data
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
       volumes:
+        - name: gea-credentials-probe
+          secret:
+            secretName: losant-gea-credentials
+            optional: true
         - name: gea-data
           persistentVolumeClaim:
             claimName: losant-gea-data

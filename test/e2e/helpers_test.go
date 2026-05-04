@@ -17,11 +17,17 @@ limitations under the License.
 package e2e_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -93,8 +99,7 @@ func ensureTestNamespaceAndSecret(ctx context.Context) {
 			Namespace: e2eNamespace,
 		},
 		StringData: map[string]string{
-			"accessKey":    "e2e-placeholder-key",
-			"accessSecret": "e2e-placeholder-secret",
+			"api-token": "e2e-placeholder-token",
 		},
 	}
 	err = k8sClient.Create(ctx, secret)
@@ -165,4 +170,144 @@ func uncordonNode(ctx context.Context, nodeName string) {
 	}
 	node.Spec.Unschedulable = false
 	_ = k8sClient.Update(ctx, node)
+}
+
+// --- Real Losant REST API helpers (require LOSANT_APP_ID and LOSANT_API_TOKEN env vars) ---
+
+const (
+	losantAPIBase     = "https://api.losant.com"
+	e2eRealSecretName = "losant-real-credentials"
+)
+
+var losantTestHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
+// losantDeviceResp is a minimal Losant REST device representation for E2E test assertions.
+type losantDeviceResp struct {
+	DeviceID   string           `json:"deviceId"`
+	Name       string           `json:"name"`
+	Attributes []losantAttrResp `json:"attributes"`
+}
+
+// losantAttrResp holds one telemetry attribute returned by the Losant REST API.
+type losantAttrResp struct {
+	Name     string `json:"name"`
+	DataType string `json:"dataType"`
+}
+
+// skipUnlessRealLosant skips the current spec when real Losant credentials are absent.
+func skipUnlessRealLosant() {
+	if os.Getenv("LOSANT_APP_ID") == "" || os.Getenv("LOSANT_API_TOKEN") == "" {
+		Skip("LOSANT_APP_ID or LOSANT_API_TOKEN not set — requires real Losant credentials")
+	}
+}
+
+// losantDo executes an authenticated request against the Losant REST API and returns the
+// response body and HTTP status code. Transport-level failures are fatal to the test.
+func losantDo(method, path string, payload interface{}) ([]byte, int) {
+	token := os.Getenv("LOSANT_API_TOKEN")
+	var reqBody io.Reader
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		Expect(err).NotTo(HaveOccurred(), "marshal losant request payload")
+		reqBody = bytes.NewReader(b)
+	}
+	req, err := http.NewRequest(method, losantAPIBase+path, reqBody)
+	Expect(err).NotTo(HaveOccurred(), "build losant request")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := losantTestHTTPClient.Do(req)
+	Expect(err).NotTo(HaveOccurred(), "losant %s %s", method, path)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred(), "read losant response body")
+	return body, resp.StatusCode
+}
+
+// losantFetchDevice calls GET /applications/{appID}/devices/{deviceID}.
+// Returns (device, statusCode); device is nil when status >= 400.
+func losantFetchDevice(appID, deviceID string) (*losantDeviceResp, int) {
+	body, status := losantDo(http.MethodGet,
+		fmt.Sprintf("/applications/%s/devices/%s", appID, deviceID), nil)
+	if status >= 400 {
+		return nil, status
+	}
+	var d losantDeviceResp
+	Expect(json.Unmarshal(body, &d)).To(Succeed(), "decode losant device response")
+	return &d, status
+}
+
+// losantAttrNames extracts attribute names from a device response for use with Gomega matchers.
+func losantAttrNames(d *losantDeviceResp) []string {
+	names := make([]string, len(d.Attributes))
+	for i, a := range d.Attributes {
+		names[i] = a.Name
+	}
+	return names
+}
+
+// losantCreateBareDevice creates a Losant device with no attributes and returns its device ID.
+func losantCreateBareDevice(appID, name, class string) string {
+	payload := map[string]interface{}{
+		"name":        name,
+		"deviceClass": class,
+	}
+	body, status := losantDo(http.MethodPost,
+		fmt.Sprintf("/applications/%s/devices", appID), payload)
+	Expect(status).To(BeNumerically("<", 300),
+		"create bare losant device %q: %s", name, string(body))
+	var d losantDeviceResp
+	Expect(json.Unmarshal(body, &d)).To(Succeed())
+	Expect(d.DeviceID).NotTo(BeEmpty())
+	return d.DeviceID
+}
+
+// losantDeleteDevice deletes a Losant device; ignores 404 (already gone).
+func losantDeleteDevice(appID, deviceID string) {
+	_, status := losantDo(http.MethodDelete,
+		fmt.Sprintf("/applications/%s/devices/%s", appID, deviceID), nil)
+	Expect(status).To(Or(BeNumerically("<", 300), Equal(404)),
+		"delete losant device %s", deviceID)
+}
+
+// ensureRealLosantSecret creates a k8s Secret holding the real Losant API token.
+func ensureRealLosantSecret(ctx context.Context) {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      e2eRealSecretName,
+			Namespace: e2eNamespace,
+		},
+		StringData: map[string]string{
+			"api-token": os.Getenv("LOSANT_API_TOKEN"),
+		},
+	}
+	err := k8sClient.Create(ctx, secret)
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		Expect(err).NotTo(HaveOccurred(), "creating real losant credentials secret")
+	}
+}
+
+// newRealLosantSync returns a LosantSync pointing at the real Losant application and credentials.
+// ClusterName is set to name so the canonical device name (k8s-cluster-<name>) is unique per test.
+func newRealLosantSync(name, interval string) *losantv1alpha1.LosantSync {
+	ls := &losantv1alpha1.LosantSync{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: losantv1alpha1.LosantSyncSpec{
+			ApplicationID: os.Getenv("LOSANT_APP_ID"),
+			ProvisioningSecretRef: losantv1alpha1.SecretRef{
+				Name:      e2eRealSecretName,
+				Namespace: e2eNamespace,
+			},
+			ClusterName: name,
+			Region:      "us-east-1",
+			GEA: losantv1alpha1.GEASpec{
+				ServiceRef: "losant-gea",
+				Port:       8080,
+			},
+		},
+	}
+	if interval != "" {
+		ls.Spec.Interval = interval
+	}
+	return ls
 }

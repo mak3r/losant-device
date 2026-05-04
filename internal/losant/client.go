@@ -31,6 +31,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -54,13 +55,27 @@ type LosantClient interface {
 	EnsureClusterDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (deviceID string, err error)
 
 	// EnsureNodeDevice creates or retrieves the peripheral device for a k8s node.
-	EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (deviceID string, err error)
+	// gatewayID must be the Losant device ID of the cluster Edge Compute device;
+	// Losant requires peripheral devices to declare their gateway at creation time.
+	EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (deviceID string, err error)
 
 	// UpdateDeviceTags replaces the tag set on an existing Losant device.
 	UpdateDeviceTags(ctx context.Context, applicationID, deviceID string, tags map[string]string) error
 
 	// GetDevice returns the current definition of a Losant device.
 	GetDevice(ctx context.Context, applicationID, deviceID string) (*Device, error)
+
+	// CreateDeviceAccessKey creates a new Losant access key for the given device.
+	// Returns keyID, key, and secret. The secret is only available in this response.
+	CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (keyID, key, secret string, err error)
+
+	// PatchDeviceAttributes adds missing attributes to an existing Losant device.
+	// Existing attributes are not removed. Idempotent.
+	PatchDeviceAttributes(ctx context.Context, applicationID, deviceID string, attrs []DeviceAttribute) error
+
+	// DeleteDevice removes a device from Losant.
+	// Returns nil if the device does not exist (404 treated as success).
+	DeleteDevice(ctx context.Context, applicationID, deviceID string) error
 }
 
 // Device is a minimal Losant device representation sufficient for the provisioning workflow.
@@ -74,6 +89,13 @@ type Device struct {
 type Tag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// DeviceAttribute declares one telemetry attribute on a Losant device.
+// DataType must be one of "number", "string", or "boolean".
+type DeviceAttribute struct {
+	Name     string `json:"name"`
+	DataType string `json:"dataType"`
 }
 
 // HTTPClient implements LosantClient using the Losant REST API.
@@ -111,32 +133,40 @@ func (c *HTTPClient) Ping(ctx context.Context) error {
 // EnsureClusterDevice looks up the cluster Edge Compute device by name and creates it if absent.
 func (c *HTTPClient) EnsureClusterDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec) (string, error) {
 	name := clusterDeviceName(spec.ClusterName)
+	attrs := clusterDeviceAttributes()
 	existing, err := c.findDeviceByName(ctx, spec.ApplicationID, name)
 	if err != nil {
 		return "", err
 	}
 	if existing != nil {
+		if err := c.PatchDeviceAttributes(ctx, spec.ApplicationID, existing.DeviceID, attrs); err != nil {
+			return "", err
+		}
 		return existing.DeviceID, nil
 	}
 
 	tags := tagsFromSpec(spec)
-	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassEdge, spec.DeviceRecipeID, tags)
+	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassEdge, spec.DeviceRecipeID, "", tags, attrs)
 }
 
 // EnsureNodeDevice looks up the peripheral device for a node by name and creates it if absent.
-func (c *HTTPClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName string) (string, error) {
+func (c *HTTPClient) EnsureNodeDevice(ctx context.Context, spec losantv1alpha1.LosantSyncSpec, nodeName, gatewayID string) (string, error) {
 	name := nodeDeviceName(spec.ClusterName, nodeName)
+	attrs := nodeDeviceAttributes()
 	existing, err := c.findDeviceByName(ctx, spec.ApplicationID, name)
 	if err != nil {
 		return "", err
 	}
 	if existing != nil {
+		if err := c.PatchDeviceAttributes(ctx, spec.ApplicationID, existing.DeviceID, attrs); err != nil {
+			return "", err
+		}
 		return existing.DeviceID, nil
 	}
 
 	tags := tagsFromSpec(spec)
 	tags = append(tags, Tag{Key: "nodeName", Value: nodeName})
-	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassNode, spec.DeviceRecipeID, tags)
+	return c.createDevice(ctx, spec.ApplicationID, name, deviceClassNode, spec.DeviceRecipeID, gatewayID, tags, attrs)
 }
 
 // UpdateDeviceTags replaces the tags on the given device.
@@ -167,6 +197,34 @@ func (c *HTTPClient) GetDevice(ctx context.Context, applicationID, deviceID stri
 	return &dev, nil
 }
 
+// CreateDeviceAccessKey creates a Losant access key scoped to deviceID and returns
+// the keyID, key, and secret. The secret is shown only in this response.
+func (c *HTTPClient) CreateDeviceAccessKey(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error) {
+	payload := map[string]interface{}{
+		"description": name,
+		"deviceIds":   []string{deviceID},
+		"filterType":  "whitelist",
+	}
+	path := fmt.Sprintf("%s/applications/%s/keys", apiBase, applicationID)
+	body, err := c.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	var resp struct {
+		KeyID  string `json:"keyId"`
+		Key    string `json:"key"`
+		Secret string `json:"secret"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", "", "", fmt.Errorf("decode access key response: %w", err)
+	}
+	if resp.Key == "" || resp.Secret == "" {
+		return "", "", "", fmt.Errorf("create device access key: empty key or secret in response")
+	}
+	return resp.KeyID, resp.Key, resp.Secret, nil
+}
+
 // findDeviceByName returns the first Losant device matching name, or nil if not found.
 func (c *HTTPClient) findDeviceByName(ctx context.Context, applicationID, name string) (*Device, error) {
 	path := fmt.Sprintf("%s/applications/%s/devices?filterField=name&filter=%s",
@@ -189,7 +247,7 @@ func (c *HTTPClient) findDeviceByName(ctx context.Context, applicationID, name s
 }
 
 // createDevice POSTs a new device and returns the assigned device ID.
-func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, class, recipeID string, tags []Tag) (string, error) {
+func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, class, recipeID, gatewayID string, tags []Tag, attrs []DeviceAttribute) (string, error) {
 	payload := map[string]interface{}{
 		"name":        name,
 		"deviceClass": class,
@@ -197,6 +255,12 @@ func (c *HTTPClient) createDevice(ctx context.Context, applicationID, name, clas
 	}
 	if recipeID != "" {
 		payload["deviceRecipeId"] = recipeID
+	}
+	if gatewayID != "" {
+		payload["gatewayId"] = gatewayID
+	}
+	if len(attrs) > 0 {
+		payload["attributes"] = attrs
 	}
 
 	path := fmt.Sprintf("%s/applications/%s/devices", apiBase, applicationID)
@@ -249,6 +313,60 @@ func (c *HTTPClient) doRequest(ctx context.Context, method, path string, payload
 		return nil, fmt.Errorf("losant api %s %s: status %d: %s", method, path, resp.StatusCode, respBody)
 	}
 	return respBody, nil
+}
+
+// PatchDeviceAttributes adds missing attributes to an existing Losant device.
+func (c *HTTPClient) PatchDeviceAttributes(ctx context.Context, applicationID, deviceID string, attrs []DeviceAttribute) error {
+	payload := map[string]interface{}{"attributes": attrs}
+	path := fmt.Sprintf("%s/applications/%s/devices/%s", apiBase, applicationID, deviceID)
+	_, err := c.doRequest(ctx, http.MethodPatch, path, payload)
+	return err
+}
+
+// DeleteDevice removes a device from Losant. Returns nil on 404 (already gone).
+func (c *HTTPClient) DeleteDevice(ctx context.Context, applicationID, deviceID string) error {
+	path := fmt.Sprintf("%s/applications/%s/devices/%s", apiBase, applicationID, deviceID)
+	_, err := c.doRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil && strings.Contains(err.Error(), "status 404") {
+		return nil
+	}
+	return err
+}
+
+// clusterDeviceAttributes returns the standard attribute definitions for a cluster Edge Compute device.
+func clusterDeviceAttributes() []DeviceAttribute {
+	return []DeviceAttribute{
+		{Name: "health_score", DataType: "number"},
+		{Name: "health_status", DataType: "string"},
+		{Name: "total_nodes", DataType: "number"},
+		{Name: "ready_nodes", DataType: "number"},
+		{Name: "unhealthy_nodes", DataType: "number"},
+		{Name: "total_pods", DataType: "number"},
+		{Name: "running_pods", DataType: "number"},
+		{Name: "failed_pods", DataType: "number"},
+		{Name: "pending_pods", DataType: "number"},
+		{Name: "crashloop_pods", DataType: "number"},
+		{Name: "degraded_pvcs", DataType: "number"},
+		{Name: "coredns_healthy", DataType: "boolean"},
+		{Name: "event_warnings", DataType: "number"},
+	}
+}
+
+// nodeDeviceAttributes returns the standard attribute definitions for a node peripheral device.
+func nodeDeviceAttributes() []DeviceAttribute {
+	return []DeviceAttribute{
+		{Name: "health_score", DataType: "number"},
+		{Name: "health_status", DataType: "string"},
+		{Name: "ready", DataType: "boolean"},
+		{Name: "memory_pressure", DataType: "boolean"},
+		{Name: "disk_pressure", DataType: "boolean"},
+		{Name: "pid_pressure", DataType: "boolean"},
+		{Name: "pod_count", DataType: "number"},
+		{Name: "not_ready_pods", DataType: "number"},
+		{Name: "crashloop_pods", DataType: "number"},
+		{Name: "cpu_request_pct", DataType: "number"},
+		{Name: "mem_request_pct", DataType: "number"},
+	}
 }
 
 // clusterDeviceName returns the canonical Losant device name for a cluster.

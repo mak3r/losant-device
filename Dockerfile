@@ -1,4 +1,4 @@
-FROM golang:1.23 AS builder
+FROM golang:1.26.2 AS builder
 ARG TARGETOS TARGETARCH
 WORKDIR /workspace
 COPY go.mod go.sum ./
