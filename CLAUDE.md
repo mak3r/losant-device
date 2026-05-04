@@ -151,6 +151,23 @@ When the security persona approves an RBAC change:
 
 Step 3 is mandatory. Without it, the developer never sees the work.
 
+### Upstream (blocked-by) notification
+
+This is the reverse of the standard handoff. When your implementation is complete but your issue is **blocked by** another persona's open issue (e.g., security approval, design decision), you must signal the blocker — not just finish your own work.
+
+1. **Do not close your issue** — it stays open until the blocker is resolved.
+2. **Comment on the blocking issue** with: what you implemented, which branch/commit it's on, and exactly what the blocking persona needs to review or decide before the PR can merge.
+3. **Confirm the blocking issue has the correct `persona/<name>` label** so it appears in that persona's `watch-work` queue. If it doesn't, add the label now.
+
+This applies any time a persona finishes work on an issue that has a "blocked by" relationship to another open issue in a different persona's domain.
+
+Example — gitops-manager implements a new CI job (issue #290) that requires a security review of secret access (issue #288):
+- gitops-manager completes the `release.yml` changes and commits
+- gitops-manager comments on **#288**: "Implementation is ready on `persona/gitops-manager`. The new `publish-chart` job uses `packages: write` and `contents: write`. Please review and close #288 when approved — that unblocks the PR merge for #290."
+- gitops-manager verifies #288 has `persona/security` label
+
+Without step 2, security never knows the implementation is waiting on their review.
+
 ## Definition of Done
 
 Before closing any issue or PR, every persona must verify all of the following:
@@ -159,6 +176,7 @@ Before closing any issue or PR, every persona must verify all of the following:
 2. Work is committed; where applicable, tests pass (`make test` for Go changes; `make manifests && git diff --exit-code config/rbac/role.yaml` for manifest changes).
 3. The issue or PR has a one-line summary comment linking the commit SHA.
 4. Handoff is complete — if this work unblocks another persona, that persona's queue has been updated (re-labeled issue or new issue with explicit instructions).
+5. Upstream blockers notified — if this issue is blocked by another persona's issue, that blocking issue has been commented on with what was done and what the blocking persona must decide. The blocking issue has the correct `persona/<name>` label.
 
 ## Standard Commands
 
