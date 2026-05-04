@@ -539,6 +539,197 @@ func TestClientConstructionInvalidSecret(t *testing.T) {
 	}
 }
 
+// TestFinalizerAddedOnFirstReconcile verifies that a CR created without the
+// device-cleanup finalizer gets the finalizer added on the first reconcile.
+func TestFinalizerAddedOnFirstReconcile(t *testing.T) {
+	ls := baseLS("add-finalizer")
+	ls.Finalizers = nil // clear the pre-populated finalizer to exercise the add path
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := r.Reconcile(context.Background(), reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	found := false
+	for _, f := range got.Finalizers {
+		if f == "losant.io/device-cleanup" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected losant.io/device-cleanup finalizer to be added on first reconcile")
+	}
+}
+
+// TestFinalizerNotDuplicatedIfPresent verifies that when the CR already has the
+// device-cleanup finalizer, Reconcile does not call r.Update (no metadata patch).
+func TestFinalizerNotDuplicatedIfPresent(t *testing.T) {
+	ls := baseLS("no-dup-finalizer") // already has finalizer via baseLS
+	var metaUpdateCalls int
+	c := buildClientWithInterceptor(interceptor.Funcs{
+		Update: func(ctx context.Context, cl client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, ok := obj.(*losantv1alpha1.LosantSync); ok {
+				metaUpdateCalls++
+			}
+			return cl.Update(ctx, obj, opts...)
+		},
+	}, ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := r.Reconcile(context.Background(), reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if metaUpdateCalls != 0 {
+		t.Errorf("r.Update called %d time(s), want 0 (finalizer already present, no metadata patch needed)", metaUpdateCalls)
+	}
+}
+
+// TestTeardownOnDeletion verifies that when a CR has a DeletionTimestamp set,
+// the reconciler calls DeleteDevice for each registered node and cluster device,
+// then removes the finalizer.
+func TestTeardownOnDeletion(t *testing.T) {
+	ls := baseLS("teardown")
+	ts := metav1.Now()
+	ls.DeletionTimestamp = &ts
+	ls.Status.ClusterDeviceID = "cluster-dev-id"
+	ls.Status.NodeDevices = map[string]string{
+		"node-1": "node-dev-1",
+		"node-2": "node-dev-2",
+	}
+	ml := losant.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := r.Reconcile(context.Background(), reqFor(ls.Name)); err != nil {
+		t.Fatalf("teardown reconcile: %v", err)
+	}
+	if len(ml.DeleteDeviceCalls) != 3 {
+		t.Errorf("DeleteDevice calls: got %d, want 3 (2 nodes + 1 cluster)", len(ml.DeleteDeviceCalls))
+	}
+	// After finalizer removal the object may be garbage-collected by the fake client.
+	var got losantv1alpha1.LosantSync
+	if c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got) == nil {
+		for _, f := range got.Finalizers {
+			if f == "losant.io/device-cleanup" {
+				t.Error("losant.io/device-cleanup finalizer should have been removed after teardown")
+			}
+		}
+	}
+}
+
+// TestTeardownWith404 verifies that when DeleteDevice returns nil (simulating a
+// 404-already-gone response), the teardown still completes and the finalizer is removed.
+func TestTeardownWith404(t *testing.T) {
+	ls := baseLS("teardown-404")
+	ts := metav1.Now()
+	ls.DeletionTimestamp = &ts
+	ls.Status.ClusterDeviceID = "gone-device-id"
+	ml := losant.NewMockClient()
+	ml.DeleteDeviceFunc = func(_ context.Context, _, _ string) error { return nil }
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := r.Reconcile(context.Background(), reqFor(ls.Name)); err != nil {
+		t.Fatalf("teardown reconcile: %v", err)
+	}
+	var got losantv1alpha1.LosantSync
+	if c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got) == nil {
+		for _, f := range got.Finalizers {
+			if f == "losant.io/device-cleanup" {
+				t.Error("finalizer should be removed even when device returns 404 (already gone)")
+			}
+		}
+	}
+}
+
+// TestTeardownRetryOnError verifies that when DeleteDevice returns a network error,
+// the finalizer is NOT removed and the reconciler surfaces the error for retry.
+func TestTeardownRetryOnError(t *testing.T) {
+	ls := baseLS("teardown-err")
+	ts := metav1.Now()
+	ls.DeletionTimestamp = &ts
+	ls.Status.ClusterDeviceID = "cluster-dev-id"
+	ml := losant.NewMockClient()
+	ml.DeleteDeviceFunc = func(_ context.Context, _, _ string) error {
+		return errors.New("connection refused")
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	_, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if err == nil {
+		t.Fatal("expected error when DeleteDevice fails, got nil")
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	found := false
+	for _, f := range got.Finalizers {
+		if f == "losant.io/device-cleanup" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("losant.io/device-cleanup finalizer must remain after a failed teardown so the reconciler retries")
+	}
+}
+
+// TestClusterIdentityChange verifies that when EnsureClusterDevice returns a
+// different device ID than the one stored in Status, the reconciler updates
+// Status.ClusterDeviceID to the new value and still reaches Phase=Active.
+func TestClusterIdentityChange(t *testing.T) {
+	ls := baseLS("identity-change")
+	ls.Status.Phase = losantv1alpha1.PhaseProvisioning
+	ls.Status.ClusterDeviceID = "old-cluster-id"
+	ls.Status.NextScheduledTime = &metav1.Time{Time: time.Now().Add(-time.Second)}
+	ml := losant.NewMockClient()
+	ml.EnsureClusterDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec) (string, error) {
+		return "new-cluster-id", nil
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := r.Reconcile(context.Background(), reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.ClusterDeviceID != "new-cluster-id" {
+		t.Errorf("ClusterDeviceID: got %q, want %q", got.Status.ClusterDeviceID, "new-cluster-id")
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active (reconcile should succeed despite identity change)", got.Status.Phase)
+	}
+}
+
+// TestNodeAttributesCPUAndMemRequestPct verifies that cpu_request_pct and
+// mem_request_pct from NodeHealth are included in the GEA ReportState payload.
+func TestNodeAttributesCPUAndMemRequestPct(t *testing.T) {
+	ls := baseLS("node-attrs-pct")
+	hs := monitor.NewHealthStore()
+	hs.Update(monitor.ClusterHealth{}, map[string]monitor.NodeHealth{
+		"node-1": {CPURequestPct: 0.75, MemRequestPct: 0.80},
+	})
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), mg, hs)
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	mg.AssertPayloadContains(t, "mock-node-node-1", "cpu_request_pct", 0.75)
+	mg.AssertPayloadContains(t, "mock-node-node-1", "mem_request_pct", 0.80)
+}
+
 // conditionTrue reports whether a named condition has Status=True.
 func conditionTrue(conds []metav1.Condition, condType string) bool {
 	for _, c := range conds {
