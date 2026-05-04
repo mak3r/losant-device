@@ -1,5 +1,7 @@
 # Runbook — losant-device Operator
 
+> **Deprecated**: This runbook is no longer the primary operational reference. For GEA bootstrap troubleshooting, see [docs/setup/7-troubleshooting.md](setup/7-troubleshooting.md). For setup procedures, see the [setup guide](setup/README.md). This file is retained for historical reference and will be removed in a future release.
+
 Operational procedures for the `losant-device` Kubernetes controller running on k3s clusters.
 
 > **Before you begin**: Complete initial setup using the [setup guide](setup/README.md) before using these runbook procedures.

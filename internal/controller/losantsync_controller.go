@@ -174,6 +174,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			LosantClient: lc,
 		}
 		if err := b.Bootstrap(ctx, &ls, clusterDeviceID); err != nil {
+			logger.Error(err, "GEA bootstrap failed")
 			return r.setDegraded(ctx, &ls, "GEABootstrapped", "BootstrapFailed", err.Error())
 		}
 		setCondition(&ls, "GEABootstrapped", metav1.ConditionTrue, "BootstrapComplete", "GEA credentials provisioned")
