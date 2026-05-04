@@ -65,13 +65,19 @@ jobs:
           APP_VERSION="${TAG#v}"
           sed -i "s/^version:.*/version: ${APP_VERSION}/" helm/Chart.yaml
           sed -i "s/^appVersion:.*/appVersion: ${APP_VERSION}/" helm/Chart.yaml
-      - name: Log in to GHCR Helm registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
       - name: Package and push Helm chart
         id: helm-push
+        env:
+          HELM_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           helm package helm/
-          PUSH_OUTPUT=$(helm push losant-device-*.tgz oci://ghcr.io/mak3r/losant-device/charts 2>&1)
+          if ! PUSH_OUTPUT=$(helm push losant-device-*.tgz oci://ghcr.io/mak3r/losant-device/charts \
+              --username "${{ github.actor }}" \
+              --password "${HELM_REGISTRY_PASSWORD}" 2>&1); then
+            echo "helm push failed:"
+            echo "${PUSH_OUTPUT}"
+            exit 1
+          fi
           echo "${PUSH_OUTPUT}"
           CHART_DIGEST=$(echo "${PUSH_OUTPUT}" | grep "^Digest:" | awk '{print $2}')
           echo "digest=${CHART_DIGEST}" >> "$GITHUB_OUTPUT"
@@ -88,7 +94,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cat config/crd/bases/*.yaml > crds.yaml
-          gh release upload "${GITHUB_REF_NAME}" crds.yaml
+          gh release upload "${GITHUB_REF_NAME}" crds.yaml --clobber
 
   chart-install-smoke:
     runs-on: ubuntu-latest
@@ -104,15 +110,17 @@ jobs:
           sudo mv ./kind /usr/local/bin/kind
       - name: Create kind cluster
         run: kind create cluster --wait 60s
-      - name: Log in to GHCR Helm registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
       - name: Install Helm chart from OCI
+        env:
+          HELM_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           APP_VERSION="${TAG#v}"
           helm install losant-device \
             oci://ghcr.io/mak3r/losant-device/charts/losant-device \
             --version "${APP_VERSION}" \
+            --username "${{ github.actor }}" \
+            --password "${HELM_REGISTRY_PASSWORD}" \
             --create-namespace \
             --namespace losant-device-system \
             --wait \
