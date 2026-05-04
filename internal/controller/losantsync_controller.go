@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -71,6 +72,16 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Deletion: run device cleanup before removing finalizer.
+	if !ls.DeletionTimestamp.IsZero() {
+		return r.handleDeletion(ctx, &ls)
+	}
+
+	// Add finalizer on first non-deleted reconcile; requeue to confirm write.
+	if controllerutil.AddFinalizer(&ls, "losant.io/device-cleanup") {
+		return ctrl.Result{}, r.Update(ctx, &ls)
 	}
 
 	// Suspend: halt all reconciliation.
@@ -149,6 +160,10 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.Error(err, "failed to ensure cluster device")
 		return r.setDegraded(ctx, &ls, "DevicesProvisioned", "ClusterDeviceError", err.Error())
 	}
+	if ls.Status.ClusterDeviceID != "" && ls.Status.ClusterDeviceID != clusterDeviceID {
+		logger.Info("cluster identity changed: old device is now orphaned in Losant; update clusterName is effectively a destructive operation",
+			"oldDeviceID", ls.Status.ClusterDeviceID, "newDeviceID", clusterDeviceID)
+	}
 	ls.Status.ClusterDeviceID = clusterDeviceID
 
 	// Step 4.5: one-time GEA credential bootstrap (idempotent; skipped once GEABootstrapped=True).
@@ -224,6 +239,49 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	logger.Info("sync complete", "name", ls.Name, "nextSync", next.Round(time.Second))
 	return ctrl.Result{RequeueAfter: time.Until(next)}, nil
+}
+
+// handleDeletion deletes all Losant devices registered by this CR, then removes the finalizer.
+func (r *LosantSyncReconciler) handleDeletion(ctx context.Context, ls *losantv1alpha1.LosantSync) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if !controllerutil.ContainsFinalizer(ls, "losant.io/device-cleanup") {
+		return ctrl.Result{}, nil
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      ls.Spec.ProvisioningSecretRef.Name,
+		Namespace: ls.Spec.ProvisioningSecretRef.Namespace,
+	}, &secret); err != nil {
+		return ctrl.Result{}, fmt.Errorf("deletion: read provisioning secret: %w", err)
+	}
+
+	lc := r.LosantClient
+	if lc == nil {
+		var err error
+		lc, err = losant.NewHTTPClient(&secret, ls.Spec.ApplicationID)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("deletion: construct losant client: %w", err)
+		}
+	}
+
+	for nodeName, nodeDeviceID := range ls.Status.NodeDevices {
+		if err := lc.DeleteDevice(ctx, ls.Spec.ApplicationID, nodeDeviceID); err != nil {
+			logger.Error(err, "failed to delete node device", "node", nodeName, "deviceID", nodeDeviceID)
+			return ctrl.Result{}, err
+		}
+	}
+
+	if ls.Status.ClusterDeviceID != "" {
+		if err := lc.DeleteDevice(ctx, ls.Spec.ApplicationID, ls.Status.ClusterDeviceID); err != nil {
+			logger.Error(err, "failed to delete cluster device", "deviceID", ls.Status.ClusterDeviceID)
+			return ctrl.Result{}, err
+		}
+	}
+
+	controllerutil.RemoveFinalizer(ls, "losant.io/device-cleanup")
+	return ctrl.Result{}, r.Update(ctx, ls)
 }
 
 // SetupWithManager registers the controller with the manager.
@@ -329,5 +387,7 @@ func nodeAttributes(h monitor.NodeHealth) map[string]interface{} {
 		"pod_count":       h.PodCount,
 		"not_ready_pods":  h.NotReadyPods,
 		"crashloop_pods":  h.CrashLoopPods,
+		"cpu_request_pct": h.CPURequestPct,
+		"mem_request_pct": h.MemRequestPct,
 	}
 }
