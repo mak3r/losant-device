@@ -483,6 +483,27 @@ func TestCreateDeviceAccessKey_Non2xxError(t *testing.T) {
 	}
 }
 
+// TestCreateDeviceAccessKey_HTTP400SchemaError verifies that the client propagates a 400
+// schema-validation error from the Losant API. This is a regression guard: the original
+// implementation sent filterType "whitelist" which the live API rejected with 400.
+func TestCreateDeviceAccessKey_HTTP400SchemaError(t *testing.T) {
+	var gotBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		http.Error(w, `{"type":"ValidationError","message":"filterType must be all or none","statusCode":400}`, http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	_, _, _, err := newTestHTTPClient(srv.URL).CreateDeviceAccessKey(context.Background(), "app-123", "dev-xyz", "k")
+	if err == nil {
+		t.Fatal("expected error on 400 response, got nil")
+	}
+
+	if gotBody["filterType"] != "all" {
+		t.Errorf("filterType sent to server: got %v, want \"all\" — regression: client must not send \"whitelist\"", gotBody["filterType"])
+	}
+}
+
 func TestCreateDeviceAccessKey_EmptyKeyInResponse(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /applications/app-123/keys", func(w http.ResponseWriter, r *http.Request) {
