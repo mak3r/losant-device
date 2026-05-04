@@ -26,7 +26,7 @@ This deploys:
 > helm install losant-device helm/ \
 >   --namespace losant-system \
 >   --create-namespace \
->   --set image.tag=v0.1.0-alpha.4
+>   --set controller.image.tag=v0.1.0-alpha.4
 > ```
 
 ---
