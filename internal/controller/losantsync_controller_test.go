@@ -566,6 +566,25 @@ func TestFinalizerAddedOnFirstReconcile(t *testing.T) {
 	}
 }
 
+// TestFinalizerAddRequeues is a regression test for the stall described in #329:
+// after adding the losant.io/device-cleanup finalizer the reconciler must return
+// Requeue=true so that the sync cycle proceeds despite GenerationChangedPredicate
+// filtering out the metadata-only watch event that the finalizer write produces.
+func TestFinalizerAddRequeues(t *testing.T) {
+	ls := baseLS("add-finalizer-requeue")
+	ls.Finalizers = nil // exercise the finalizer-add branch
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	result, err := r.Reconcile(context.Background(), reqFor(ls.Name))
+	if err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	if !result.Requeue {
+		t.Error("expected Requeue=true after finalizer add; without it the reconciler stalls permanently (issue #329)")
+	}
+}
+
 // TestFinalizerNotDuplicatedIfPresent verifies that when the CR already has the
 // device-cleanup finalizer, Reconcile does not call r.Update (no metadata patch).
 func TestFinalizerNotDuplicatedIfPresent(t *testing.T) {
