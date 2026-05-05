@@ -7,7 +7,7 @@
 | Old section | New location |
 |---|---|
 | Steps 1–3, 5–6 (Application, device, access key, API token, secrets) | [setup/1-losant-device-setup.md](setup/1-losant-device-setup.md) |
-| Step 4 (Edge Workflow) | [setup/3-losant-workflow-setup.md](setup/3-losant-workflow-setup.md) |
+| Step 4 (Edge Workflow) | [setup/4-losant-workflow.md](setup/4-losant-workflow.md) |
 | Steps 7–8 (Device Recipe, LosantSync CR) | [setup/4-operator-configuration.md](setup/4-operator-configuration.md) |
 | Troubleshooting | [setup/4-operator-configuration.md#troubleshooting](setup/4-operator-configuration.md#troubleshooting) |
 
