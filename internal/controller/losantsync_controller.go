@@ -79,9 +79,15 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.handleDeletion(ctx, &ls)
 	}
 
-	// Add finalizer on first non-deleted reconcile; requeue to confirm write.
+	// Add finalizer on first non-deleted reconcile. Explicit requeue is required
+	// because GenerationChangedPredicate filters out metadata-only watch events
+	// (finalizer writes do not bump .metadata.generation), so without Requeue the
+	// reconciler would stall permanently after this Update.
 	if controllerutil.AddFinalizer(&ls, "losant.io/device-cleanup") {
-		return ctrl.Result{}, r.Update(ctx, &ls)
+		if err := r.Update(ctx, &ls); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Suspend: halt all reconciliation.
