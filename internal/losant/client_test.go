@@ -19,6 +19,7 @@ package losant
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -685,5 +686,93 @@ func TestEnsureNodeDevice_Found_PatchHasAttributes(t *testing.T) {
 	attrs, ok := patchBody["attributes"].([]interface{})
 	if !ok || len(attrs) != 11 {
 		t.Errorf("PATCH body: expected 11 node attributes, got: %v", patchBody["attributes"])
+	}
+}
+
+// --- ReleaseWorkflow ---
+
+func TestReleaseWorkflow_Success(t *testing.T) {
+	var called bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-abc", "v1.0.0")
+	if err != nil {
+		t.Fatalf("ReleaseWorkflow: unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("expected POST /applications/app-123/edge/deployments/release to be called")
+	}
+}
+
+func TestReleaseWorkflow_WorkflowNotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"type":"ResourceNotFound","message":"flow not found"}`, http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-missing", "v1.0.0")
+	if !errors.Is(err, ErrWorkflowNotFound) {
+		t.Fatalf("ReleaseWorkflow on 404: expected ErrWorkflowNotFound, got: %v", err)
+	}
+}
+
+// --- GetEdgeDeployments ---
+
+func TestGetEdgeDeployments_Success(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/edge/deployments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{
+			"items": []map[string]interface{}{
+				{"flowId": "flow-1", "currentVersion": "v1.0.0", "desiredVersion": "v1.1.0"},
+				{"flowId": "flow-2", "currentVersion": "v2.0.0", "desiredVersion": "v2.0.0"},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	deployments, err := newTestHTTPClient(srv.URL).GetEdgeDeployments(context.Background(), "app-123", "dev-edge-1")
+	if err != nil {
+		t.Fatalf("GetEdgeDeployments: unexpected error: %v", err)
+	}
+	if len(deployments) != 2 {
+		t.Fatalf("GetEdgeDeployments: got %d items, want 2", len(deployments))
+	}
+	if deployments[0].FlowID != "flow-1" {
+		t.Errorf("deployments[0].FlowID: got %q, want %q", deployments[0].FlowID, "flow-1")
+	}
+	if deployments[0].CurrentVersion != "v1.0.0" {
+		t.Errorf("deployments[0].CurrentVersion: got %q, want %q", deployments[0].CurrentVersion, "v1.0.0")
+	}
+	if deployments[0].DesiredVersion != "v1.1.0" {
+		t.Errorf("deployments[0].DesiredVersion: got %q, want %q", deployments[0].DesiredVersion, "v1.1.0")
+	}
+	if deployments[1].FlowID != "flow-2" {
+		t.Errorf("deployments[1].FlowID: got %q, want %q", deployments[1].FlowID, "flow-2")
+	}
+}
+
+func TestGetEdgeDeployments_Empty(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/edge/deployments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"items": []interface{}{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	deployments, err := newTestHTTPClient(srv.URL).GetEdgeDeployments(context.Background(), "app-123", "dev-edge-1")
+	if err != nil {
+		t.Fatalf("GetEdgeDeployments empty: unexpected error: %v", err)
+	}
+	if len(deployments) != 0 {
+		t.Errorf("GetEdgeDeployments empty: got %d items, want 0", len(deployments))
 	}
 }
