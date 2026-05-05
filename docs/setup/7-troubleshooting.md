@@ -228,6 +228,52 @@ kubectl patch losantsync <your-cr-name> --type=merge -p '{"spec":{"suspend":fals
 
 ---
 
+## `WorkflowDeployed=False` — Reason: `WorkflowNotFound`
+
+**Symptom**: `kubectl describe losantsync <your-cr-name>` shows:
+
+```
+Type:    WorkflowDeployed
+Status:  False
+Reason:  WorkflowNotFound
+Message: Workflow Version was not found
+```
+
+Controller logs include a line like:
+
+```
+error  workflow release failed  {"flowId": "...", "version": "v1.0.0", "status": 404}
+```
+
+**Cause**: The `version` value in `spec.workflowDeployments` does not match any saved version snapshot name in Losant. Losant auto-names version snapshots using timestamps (e.g. `"2026-05-05T12-39-04"`) unless you explicitly create a named version. Writing `v1.0.0` in the CR when no snapshot with that exact name exists produces this 404.
+
+The same `WorkflowNotFound` reason also appears when the `flowId` itself is wrong (the workflow does not exist in the Application at all).
+
+**Fix**:
+
+1. Open the Losant UI → **Application** → **Workflows** → **Edge** tab.
+2. Click the workflow referenced by `flowId`.
+3. Select the **Versions** tab on the right side of the editor.
+4. Check the list of saved version names. Copy the exact name you want to deploy (e.g. `"2026-05-05T12-39-04"` or `"v1.0.0"` if you created one).
+5. If no suitable named version exists, click **Create Version**, enter a name, and save.
+6. Update your `LosantSync` CR:
+
+   ```bash
+   kubectl patch losantsync <your-cr-name> --type=merge \
+     -p '{"spec":{"workflowDeployments":[{"flowId":"<id>","version":"<exact-version-name>"}]}}'
+   ```
+
+7. The controller reconciles on the next cycle. Confirm the condition clears:
+
+   ```bash
+   kubectl get losantsync <your-cr-name> \
+     -o jsonpath='{.status.conditions[?(@.type=="WorkflowDeployed")]}' | jq .
+   ```
+
+See [Step 4 — Edge Workflow](4-losant-workflow.md#finding-or-creating-a-named-workflow-version) for the full version UI walkthrough.
+
+---
+
 ## Next Step
 
 If bootstrap completes but data does not appear in Losant, see [Step 5 — Verify](5-verify.md).
