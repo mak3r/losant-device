@@ -1,6 +1,12 @@
 # Image URL to use for all building/pushing image targets
 IMG ?= controller:latest
 PLATFORMS ?= linux/arm64,linux/amd64
+# Container tool — override with CONTAINER_TOOL=docker if needed
+CONTAINER_TOOL ?= podman
+# Dev deploy settings — override DEV_IMG_TAG to use a different floating tag
+DEV_IMG_REPO ?= ghcr.io/mak3r/losant-device
+DEV_IMG_TAG ?= dev
+DEV_NAMESPACE ?= losant-system
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -66,16 +72,16 @@ build: manifests generate fmt vet ## Build the manager binary to bin/manager
 
 .PHONY: docker-build
 docker-build: ## Build the container image (set IMG=<image>:<tag>)
-	docker build -t ${IMG} .
+	$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push the container image (set IMG=<image>:<tag>)
-	docker push ${IMG}
+	$(CONTAINER_TOOL) push ${IMG}
 
 .PHONY: docker-buildx
 docker-buildx: ## Build and push multi-arch image via buildx (set IMG=<image>:<tag>)
-	docker buildx create --use --name losant-builder || true
-	docker buildx build \
+	$(CONTAINER_TOOL) buildx create --use --name losant-builder || true
+	$(CONTAINER_TOOL) buildx build \
 	  --platform $(PLATFORMS) \
 	  --tag $(IMG) \
 	  --push \
@@ -103,6 +109,16 @@ deploy: manifests install ## Deploy controller to cluster, installing CRDs first
 .PHONY: undeploy
 undeploy: ## Remove the controller from the cluster
 	$(KUSTOMIZE) build config/default | kubectl delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: dev-deploy
+dev-deploy: ## Build, push :dev tag, and helm upgrade with pullPolicy=Always (set DEV_IMG_TAG to override)
+	$(CONTAINER_TOOL) build -t $(DEV_IMG_REPO):$(DEV_IMG_TAG) .
+	$(CONTAINER_TOOL) push $(DEV_IMG_REPO):$(DEV_IMG_TAG)
+	helm upgrade --install losant-device ./helm \
+	  --set controller.image.repository=$(DEV_IMG_REPO) \
+	  --set controller.image.tag=$(DEV_IMG_TAG) \
+	  --set controller.image.pullPolicy=Always \
+	  -n $(DEV_NAMESPACE) --create-namespace
 
 .PHONY: reset
 reset: ## Full teardown: undeploy operator, uninstall CRDs, delete losant-system namespace (idempotent)
