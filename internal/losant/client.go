@@ -45,6 +45,16 @@ const (
 	deviceClassNode = "peripheral"
 )
 
+// ErrWorkflowNotFound is returned by ReleaseWorkflow when the flowId does not exist in the application.
+var ErrWorkflowNotFound = fmt.Errorf("workflow not found")
+
+// EdgeDeploymentStatus holds the current and desired workflow versions for one Edge Workflow on a device.
+type EdgeDeploymentStatus struct {
+	FlowID         string
+	CurrentVersion string
+	DesiredVersion string
+}
+
 // LosantClient manages Losant device lifecycle via the REST provisioning API.
 type LosantClient interface {
 	// Ping verifies that the Application API Token is valid by calling
@@ -76,6 +86,14 @@ type LosantClient interface {
 	// DeleteDevice removes a device from Losant.
 	// Returns nil if the device does not exist (404 treated as success).
 	DeleteDevice(ctx context.Context, applicationID, deviceID string) error
+
+	// ReleaseWorkflow deploys the given workflow version to a specific Edge Compute device.
+	// Safe to call repeatedly; Losant updates desiredVersion idempotently.
+	// Returns ErrWorkflowNotFound if the flowId does not exist in the application.
+	ReleaseWorkflow(ctx context.Context, applicationID, deviceID, flowID, version string) error
+
+	// GetEdgeDeployments returns current and desired workflow versions for a specific device.
+	GetEdgeDeployments(ctx context.Context, applicationID, deviceID string) ([]EdgeDeploymentStatus, error)
 }
 
 // Device is a minimal Losant device representation sufficient for the provisioning workflow.
@@ -331,6 +349,55 @@ func (c *HTTPClient) DeleteDevice(ctx context.Context, applicationID, deviceID s
 		return nil
 	}
 	return err
+}
+
+// ReleaseWorkflow deploys a workflow version to an Edge Compute device via the Losant release API.
+// Returns ErrWorkflowNotFound (wrapped with the Losant error body) when the API responds with 404.
+// Note: Losant may return 404 when the version does not exist for the given flow, not only when
+// the flow itself is absent.
+func (c *HTTPClient) ReleaseWorkflow(ctx context.Context, applicationID, deviceID, flowID, version string) error {
+	payload := map[string]interface{}{
+		"flowId":    flowID,
+		"version":   version,
+		"deviceIds": []string{deviceID},
+	}
+	path := fmt.Sprintf("%s/applications/%s/edge/deployments/release", apiBase, applicationID)
+	_, err := c.doRequest(ctx, http.MethodPost, path, payload)
+	if err != nil && strings.Contains(err.Error(), "status 404") {
+		return fmt.Errorf("%w: %s", ErrWorkflowNotFound, err.Error())
+	}
+	return err
+}
+
+// GetEdgeDeployments fetches current and desired workflow versions for a device.
+func (c *HTTPClient) GetEdgeDeployments(ctx context.Context, applicationID, deviceID string) ([]EdgeDeploymentStatus, error) {
+	path := fmt.Sprintf("%s/applications/%s/edge/deployments?deviceId=%s",
+		apiBase, applicationID, url.QueryEscape(deviceID))
+	body, err := c.doRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Items []struct {
+			FlowID         string `json:"flowId"`
+			CurrentVersion string `json:"currentVersion"`
+			DesiredVersion string `json:"desiredVersion"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("decode edge deployments response: %w", err)
+	}
+
+	out := make([]EdgeDeploymentStatus, len(result.Items))
+	for i, item := range result.Items {
+		out[i] = EdgeDeploymentStatus{
+			FlowID:         item.FlowID,
+			CurrentVersion: item.CurrentVersion,
+			DesiredVersion: item.DesiredVersion,
+		}
+	}
+	return out, nil
 }
 
 // clusterDeviceAttributes returns the standard attribute definitions for a cluster Edge Compute device.

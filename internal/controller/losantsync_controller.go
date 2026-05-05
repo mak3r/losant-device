@@ -18,12 +18,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/robfig/cron/v3"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,7 +69,7 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	var ls losantv1alpha1.LosantSync
 	if err := r.Get(ctx, req.NamespacedName, &ls); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -202,6 +203,13 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	setCondition(&ls, "DevicesProvisioned", metav1.ConditionTrue, "Provisioned", "all devices confirmed in Losant")
 
+	// Step 5b: ensure Edge Workflow deployments match spec.
+	if wfReason, wfMsg, wfErr := ensureWorkflowDeployments(ctx, lc, &ls); wfErr != nil {
+		return r.setDegraded(ctx, &ls, losantv1alpha1.ConditionWorkflowDeployed, wfReason, wfMsg)
+	} else if wfReason != "" {
+		setCondition(&ls, losantv1alpha1.ConditionWorkflowDeployed, metav1.ConditionTrue, wfReason, wfMsg)
+	}
+
 	// Step 6: report cluster state to GEA.
 	if err := gc.ReportState(ctx, gea.StatePayload{
 		DeviceID:   clusterDeviceID,
@@ -297,6 +305,56 @@ func (r *LosantSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&losantv1alpha1.LosantSync{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+}
+
+// ensureWorkflowDeployments inspects edge deployment state and calls ReleaseWorkflow for any
+// workflow whose desiredVersion does not yet match spec. Returns the condition reason, message,
+// and a non-nil error when a release fails or a workflow is not found.
+// Returns empty strings and nil when spec.WorkflowDeployments is empty (opt-in behaviour).
+func ensureWorkflowDeployments(ctx context.Context, lc losant.LosantClient, ls *losantv1alpha1.LosantSync) (reason, message string, err error) {
+	logger := log.FromContext(ctx)
+
+	if len(ls.Spec.WorkflowDeployments) == 0 {
+		return "", "", nil
+	}
+
+	deployments, err := lc.GetEdgeDeployments(ctx, ls.Spec.ApplicationID, ls.Status.ClusterDeviceID)
+	if err != nil {
+		logger.Error(err, "failed to get edge deployments", "deviceID", ls.Status.ClusterDeviceID)
+		return "ReleaseFailed", err.Error(), err
+	}
+	logger.V(1).Info("got edge deployments", "deviceID", ls.Status.ClusterDeviceID, "count", len(deployments))
+
+	byFlowID := make(map[string]losant.EdgeDeploymentStatus, len(deployments))
+	for _, d := range deployments {
+		byFlowID[d.FlowID] = d
+	}
+
+	allConfirmed := true
+	for _, wd := range ls.Spec.WorkflowDeployments {
+		current := byFlowID[wd.FlowID]
+		if current.DesiredVersion != wd.Version {
+			logger.Info("releasing workflow version", "flowID", wd.FlowID, "desiredVersion", wd.Version, "currentDesired", current.DesiredVersion)
+			if releaseErr := lc.ReleaseWorkflow(ctx, ls.Spec.ApplicationID, ls.Status.ClusterDeviceID, wd.FlowID, wd.Version); releaseErr != nil {
+				if errors.Is(releaseErr, losant.ErrWorkflowNotFound) {
+					logger.Error(releaseErr, "workflow or version not found", "flowID", wd.FlowID, "version", wd.Version)
+					return "WorkflowNotFound", fmt.Sprintf("flowId %s version %s not found in Losant", wd.FlowID, wd.Version), releaseErr
+				}
+				logger.Error(releaseErr, "workflow release failed", "flowID", wd.FlowID, "version", wd.Version)
+				return "ReleaseFailed", releaseErr.Error(), releaseErr
+			}
+			logger.Info("workflow release queued", "flowID", wd.FlowID, "version", wd.Version)
+			allConfirmed = false
+		} else if current.CurrentVersion != wd.Version {
+			logger.V(1).Info("workflow release pending GEA confirmation", "flowID", wd.FlowID, "version", wd.Version, "currentVersion", current.CurrentVersion)
+			allConfirmed = false
+		}
+	}
+
+	if allConfirmed {
+		return "Deployed", "all workflow versions confirmed deployed", nil
+	}
+	return "DeploymentPending", "release queued, awaiting GEA confirmation", nil
 }
 
 // setDegraded sets the given condition to False, phase to Degraded, advances

@@ -39,9 +39,9 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 
 The merge manager is a gatekeeper, not a coder. When reviewing a PR it:
 
-1. Runs `make test` — if it fails, creates a GitHub issue labeled `persona/<owner>` and `type/bug`, comments on the PR with the issue link, and does NOT merge
+1. Runs `make test` — if it fails, creates a GitHub issue labeled `persona/<owner>` and `bug`, comments on the PR with the issue link, and does NOT merge
 2. Checks for open `type/security` issues on the branch — if any exist, blocks merge and creates a blocking issue
-3. If CI is green and no blockers exist, approves the PR and merges to `develop`
+3. If CI is green and no blockers exist, merges the PR to `develop` with `gh pr merge <n> --merge --delete-branch` (no approval step — all personas share one GitHub account, so self-approval is not possible)
 4. Never edits source files, never force-pushes, never resolves conflicts directly
 
 When conflicts exist between two branches, the merge manager creates an issue assigned to both responsible personas and waits for them to resolve it.
@@ -53,7 +53,7 @@ For releases: when `develop` is stable, the merge manager creates a PR from `dev
 The product designer is a trusted advisor and orchestrator, not an implementer. When invoked it:
 
 1. Designs system architecture and documents decisions in `.claude/plans/`
-2. Breaks work into GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
+2. Breaks work into GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
 3. Identifies dependencies between issues and personas; sets blocking relationships explicitly
 4. Advises on trade-offs and scope — proposes changes but never unilaterally implements them
 5. Reviews open issues and PRs to check alignment with architectural intent
@@ -70,8 +70,8 @@ The triage agent is an intake specialist, not an implementer. When invoked it:
 2. Asks clarifying questions until it has sufficient information to produce a complete report
 3. Determines the correct persona(s), phase, and type for each issue
 4. Presents a draft of every issue to the human for confirmation before creating anything
-5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
-6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `type/bug` AND `persona/test-engineer` + `type/task`)
+5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
+6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `bug` AND `persona/test-engineer` + `type/task`)
 7. Never commits code, never modifies any file, never creates `.claude/plans/` documents
 
 To invoke: run the `/triage` Claude Code skill.
@@ -80,12 +80,12 @@ To invoke: run the `/triage` Claude Code skill.
 
 | Symptom | Primary Issue | Secondary Issue |
 |---|---|---|
-| Code crash / broken functionality | `persona/developer` + `type/bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
+| Code crash / broken functionality | `persona/developer` + `bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
 | Usability confusion / unclear docs | `persona/docs` + `type/task` | — |
 | Security concern / RBAC / credential exposure | `persona/security` + `type/security` | — |
 | Architecture question / new feature design | `persona/product-designer` + `type/task` | — |
-| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `type/bug` | — |
-| E2E / acceptance test failure | `persona/qa` + `type/bug` | — |
+| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `bug` | — |
+| E2E / acceptance test failure | `persona/qa` + `bug` | — |
 
 ### Phase Determination
 
@@ -105,7 +105,7 @@ The test engineer does not have an independent feature branch. Instead:
 3. Both push to `feature/developer/<name>` until `make test` passes cleanly
 4. A single PR is opened containing both implementation and tests
 
-If the test engineer finds a bug, they open a GitHub issue labeled `persona/developer` and `type/bug`. They do not patch the implementation themselves.
+If the test engineer finds a bug, they open a GitHub issue labeled `persona/developer` and `bug`. They do not patch the implementation themselves.
 
 ## Docs Agent
 
@@ -128,7 +128,7 @@ Finishing your own file edits and committing is necessary but not sufficient. If
 After completing work that unblocks another persona, choose one of:
 
 1. **Same issue, next persona**: Remove your `persona/<name>` label from the issue, add `persona/<next>` label, and comment with what was done and exactly what the next persona must do.
-2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and `type/<task|bug|security>` with explicit instructions, then close your issue.
+2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` with explicit instructions, then close your issue.
 
 Without a handoff, the queue-based `watch-work` model breaks — agents only pick up issues labeled for their persona.
 
@@ -151,6 +151,23 @@ When the security persona approves an RBAC change:
 
 Step 3 is mandatory. Without it, the developer never sees the work.
 
+### Upstream (blocked-by) notification
+
+This is the reverse of the standard handoff. When your implementation is complete but your issue is **blocked by** another persona's open issue (e.g., security approval, design decision), you must signal the blocker — not just finish your own work.
+
+1. **Do not close your issue** — it stays open until the blocker is resolved.
+2. **Comment on the blocking issue** with: what you implemented, which branch/commit it's on, and exactly what the blocking persona needs to review or decide before the PR can merge.
+3. **Confirm the blocking issue has the correct `persona/<name>` label** so it appears in that persona's `watch-work` queue. If it doesn't, add the label now.
+
+This applies any time a persona finishes work on an issue that has a "blocked by" relationship to another open issue in a different persona's domain.
+
+Example — gitops-manager implements a new CI job (issue #290) that requires a security review of secret access (issue #288):
+- gitops-manager completes the `release.yml` changes and commits
+- gitops-manager comments on **#288**: "Implementation is ready on `persona/gitops-manager`. The new `publish-chart` job uses `packages: write` and `contents: write`. Please review and close #288 when approved — that unblocks the PR merge for #290."
+- gitops-manager verifies #288 has `persona/security` label
+
+Without step 2, security never knows the implementation is waiting on their review.
+
 ## Definition of Done
 
 Before closing any issue or PR, every persona must verify all of the following:
@@ -159,6 +176,7 @@ Before closing any issue or PR, every persona must verify all of the following:
 2. Work is committed; where applicable, tests pass (`make test` for Go changes; `make manifests && git diff --exit-code config/rbac/role.yaml` for manifest changes).
 3. The issue or PR has a one-line summary comment linking the commit SHA.
 4. Handoff is complete — if this work unblocks another persona, that persona's queue has been updated (re-labeled issue or new issue with explicit instructions).
+5. Upstream blockers notified — if this issue is blocked by another persona's issue, that blocking issue has been commented on with what was done and what the blocking persona must decide. The blocking issue has the correct `persona/<name>` label.
 
 ## Standard Commands
 
@@ -225,7 +243,7 @@ Changing these files has broad impact — coordinate with other personas before 
 When creating issues, always apply:
 - A `persona/<name>` label for the responsible persona
 - A `phase/<n>` label for the implementation phase
-- A `type/task`, `type/bug`, or `type/security` label
+- A `bug`, `type/task`, or `type/security` label
 
 The merge manager uses these labels to route notifications and gate PRs.
 

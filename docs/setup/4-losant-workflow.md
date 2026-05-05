@@ -1,51 +1,111 @@
-# Step 4: Edge Workflow Setup
+# Step 4: Edge Workflow Deployment
 
-Create and deploy the Edge Workflow that receives state reports from the controller via the GEA.
+The operator automatically deploys Edge Workflows declared in `spec.workflowDeployments`. Once the LosantSync CR is applied and the cluster device is provisioned, the controller calls the Losant Edge Deployment API on each reconcile cycle to ensure the declared workflow versions are running on the GEA.
+
+> **Previous versions** required manually creating and deploying the Edge Workflow in the Losant UI. This step is now fully automated as of the `workflowDeployments` spec field.
+
+---
 
 ## Prerequisites
 
 - LosantSync CR at `Active` phase (see [Step 3](3-deploy.md))
-- Edge Compute device visible in **Application → Devices** (provisioned by the controller on first reconcile)
+- The Edge Workflow already exists in your Losant Application with at least one named version (create it in **Application → Workflows → Add Workflow → Edge Workflow**)
+- The Losant Application API Token has the `edgeDeployments.release` scope (see [Step 1](1-losant-application.md))
 
 ---
 
-## Wait for the Edge Compute device to appear Online
+## Declare workflows in the LosantSync spec
 
-Before creating the workflow, confirm the device is present and Online:
+Add a `workflowDeployments` list to your `LosantSync` manifest. Each entry declares one workflow version to keep deployed on the cluster's Edge Compute device:
 
-1. In Losant: **Application → Devices** — the cluster device should appear (named after `LosantSync.spec.clusterName`)
-2. Confirm the device shows **Online** status — this means the GEA has connected via MQTT
+```yaml
+apiVersion: losant.io/v1alpha1
+kind: LosantSync
+metadata:
+  name: prod-edge-01
+spec:
+  applicationID: "<application-id>"
+  provisioningSecretRef:
+    name: losant-provisioning-credentials
+    namespace: losant-system
+  clusterName: "prod-edge-01"
+  region: "us-west"
+  interval: "5m"
+  gea:
+    serviceRef: "losant-gea"
+    port: 8080
+  workflowDeployments:
+    - flowId: "<losant-workflow-id>"
+      version: "v1.0.0"
+```
 
-> If the device is not yet Online when you deploy the workflow, the deployment will fail with: *"Some of your selected devices have an agent version lower than the target version for this deployment."* Wait for the GEA pod to finish its MQTT handshake:
-> ```bash
-> kubectl logs deploy/losant-device-gea -n losant-system | grep "Connected to"
-> ```
-> Then retry the deployment.
+| Field | Description |
+|---|---|
+| `flowId` | Losant Edge Workflow ID (see [Finding a workflow ID](#finding-a-workflow-id) below) |
+| `version` | Named version string to deploy — must exactly match a saved version name in Losant (see [Finding or creating a named workflow version](#finding-or-creating-a-named-workflow-version) below) |
+
+`workflowDeployments` is optional. If omitted, no workflow deployment is attempted and the `WorkflowDeployed` condition is not set.
 
 ---
 
-## Create the Edge Workflow
+## Finding a workflow ID
 
-1. In your Application → **Workflows** → **Add Workflow** → **Edge Workflow**
-2. Give the workflow a name (e.g., `k8s-state-receiver`)
-3. Under **Edge Devices**, select the Edge Compute device (visible in **Application → Devices** after first reconcile)
+In the Losant UI, the workflow ID appears in the browser URL when you open a workflow:
 
-> **Note on Device trigger blocks**: The workflow editor shows cloud-side trigger nodes labelled "Device" (command, connect, disconnect, startup). These fire on MQTT events from a cloud perspective and are **not** what you need here. You need an **HTTP Trigger** node — an edge-side trigger that listens for local HTTP requests on the GEA pod.
+```
+https://app.losant.com/applications/<appId>/flows/<flowId>/...
+```
+
+Copy the `<flowId>` segment. Alternatively, retrieve it via the Losant API:
+
+```bash
+curl -s -H "Authorization: Bearer <api-token>" \
+  "https://api.losant.com/applications/<appId>/flows?flowClass=edge" \
+  | jq '.items[] | {id: .id, name: .name}'
+```
 
 ---
 
-## Configure the HTTP Trigger node
+## Finding or creating a named workflow version
 
-4. In the workflow canvas, add an **HTTP Trigger** node
-5. Set the trigger path to `/state`
-6. Set the method to `POST`
-7. Leave the port at `8080` (must match `LosantSync.spec.gea.port`)
+Losant **auto-names version snapshots using timestamps** (e.g. `"2026-05-05T12-39-04"`) unless you create a snapshot with an explicit name. If you write `version: "v1.0.0"` in your CR but the workflow has no snapshot with that exact name, the controller returns `WorkflowDeployed=False` with reason `WorkflowNotFound` and a 404 in the logs.
+
+**To find or create a named version snapshot:**
+
+1. In the Losant UI, open your Application and select **Workflows** in the left side menu.
+2. Select the **Edge** tab in the center pane near the top.
+3. Click the Edge Workflow you want to deploy.
+4. Select the **Versions** tab on the right side of the editor window.
+5. The currently active version name is displayed at the top.
+6. Use the filter field to search for other existing saved versions.
+7. To create a new named version: click **Create Version**, enter a meaningful name (e.g. `v1.0.0`), and save. That name is now valid for the `version` field.
+
+> **Tip**: If you are using auto-generated timestamp versions (e.g. the default Losant snapshot name), copy the exact string shown in the Versions tab — including the `T` and dashes — and paste it into your CR.
 
 ---
 
-## Payload format
+## Monitor deployment status
 
-The controller sends a separate POST for each device on every sync. The JSON body structure:
+The controller sets the `WorkflowDeployed` condition on the `LosantSync` status after processing workflow deployments:
+
+```bash
+kubectl get losantsync <NAME> -o jsonpath='{.status.conditions[?(@.type=="WorkflowDeployed")]}' | jq .
+```
+
+| Reason | Meaning |
+|---|---|
+| `Deployed` | All declared workflow versions are confirmed running on the GEA |
+| `DeploymentPending` | Release was sent to Losant; awaiting GEA confirmation (normal when GEA was just restarted or reconnected) |
+| `ReleaseFailed` | Losant API call to release the workflow failed; check controller logs |
+| `WorkflowNotFound` | The `flowId` does not exist, or the `version` string does not match any saved version snapshot in Losant; see [Finding or creating a named workflow version](#finding-or-creating-a-named-workflow-version) and [Troubleshooting](7-troubleshooting.md#workflowdeployedfalse--reason-workflownotfound) |
+
+`DeploymentPending` resolves automatically on the next reconcile cycle once the GEA confirms receipt of the deployment.
+
+---
+
+## Payload format reference
+
+The controller sends one HTTP POST per device (cluster + each node) on every sync. The GEA workflow receives these payloads via the HTTP trigger on port `8080`. The wire format:
 
 ```json
 {
@@ -55,9 +115,9 @@ The controller sends a separate POST for each device on every sync. The JSON bod
 }
 ```
 
-The `time` field is omitted when the controller does not supply an explicit timestamp; the GEA then applies its own clock.
+The `time` field is omitted when the controller does not supply an explicit timestamp; the GEA applies its own clock.
 
-**Cluster device payload** (`data` fields):
+**Cluster device attributes** (`data` fields):
 
 | Field | Type | Description |
 |---|---|---|
@@ -75,7 +135,7 @@ The `time` field is omitted when the controller does not supply an explicit time
 | `coredns_healthy` | boolean | `true` if all CoreDNS pods are Running |
 | `event_warnings` | number | Count of Warning-level events in the last observation window |
 
-**Node device payload** (`data` fields):
+**Node device attributes** (`data` fields):
 
 | Field | Type | Description |
 |---|---|---|
@@ -88,31 +148,8 @@ The `time` field is omitted when the controller does not supply an explicit time
 | `pod_count` | number | Total pods scheduled on this node |
 | `not_ready_pods` | number | Pods on this node not in Running phase |
 | `crashloop_pods` | number | Pods on this node in CrashLoopBackOff |
-
----
-
-## Route state to the correct device
-
-Because `deviceId` is included in every POST body, a single workflow handles both cluster and node state:
-
-8. From the HTTP Trigger, add a **Device: Set State** node
-9. Set the **Device** field to **Payload Path** and enter `data.body.deviceId`
-10. Set the **State** field to **Payload Path** and enter `data.body.data`
-11. Add an **HTTP Response** node after the Set State node:
-    - **Response Code**: `200`
-    - **Response Body Source**: **String Template**
-    - **Response Body Template**: `{}`
-
-    > The controller only checks the HTTP status code; the body is ignored. `{}` satisfies the required field.
-
----
-
-## Deploy the workflow
-
-12. Save the workflow
-13. Click **Deploy** to push it to the Edge Compute device
-
-Once deployed, the GEA will start accepting state POSTs from the controller on `http://losant-gea:8080/state`.
+| `cpu_request_pct` | number | CPU requests as a fraction of allocatable (0.0–1.0) |
+| `mem_request_pct` | number | Memory requests as a fraction of allocatable (0.0–1.0) |
 
 ---
 

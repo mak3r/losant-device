@@ -67,6 +67,8 @@ kubectl create secret generic losant-provisioning-credentials \
 
 > **Key name matters**: The controller reads the `api-token` key specifically. Any other key name causes a startup error.
 
+> **Required API token scopes**: The Application API Token must include `devices.*` and `deviceRecipes.*` for device provisioning. If you use `spec.workflowDeployments`, it must also include `edgeDeployments.release` — without this scope, the controller will enter `Degraded` phase with `ReleaseFailed` on the `WorkflowDeployed` condition. Configure scopes in the Losant UI under **Application → Access Keys → Edit**.
+
 ---
 
 ## Upgrade
@@ -145,6 +147,10 @@ spec:
   gea:
     serviceRef: "losant-gea"
     port: 8080
+  # workflowDeployments:          # Optional — declare Edge Workflows to keep deployed on the cluster GEA.
+  #   - flowId: "<workflow-id>"   # Losant workflow ID (from the Losant UI URL or API).
+  #     version: "v1.0.0"         # Must exactly match a saved version name in Losant.
+  #                                # See Step 4 for how to find or create a named version snapshot.
 ```
 
 ```bash

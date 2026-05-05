@@ -19,6 +19,7 @@ package controller_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -863,5 +864,379 @@ func TestNodeDeviceIDEmpty(t *testing.T) {
 	// GEA ReportState should be called only once (cluster), not for the node with empty ID.
 	if len(mg.Calls) != 1 {
 		t.Errorf("ReportState calls: got %d, want 1 (node skipped)", len(mg.Calls))
+	}
+}
+
+// conditionReason returns the Reason field of the named condition, or "" if absent.
+func conditionReason(conds []metav1.Condition, condType string) string {
+	for _, c := range conds {
+		if c.Type == condType {
+			return c.Reason
+		}
+	}
+	return ""
+}
+
+// conditionAbsent reports true when no condition with the given type is present.
+func conditionAbsent(conds []metav1.Condition, condType string) bool {
+	for _, c := range conds {
+		if c.Type == condType {
+			return false
+		}
+	}
+	return true
+}
+
+// --- ensureWorkflowDeployments ---
+
+// TestWorkflowDeployments_EmptySpec verifies that when spec.WorkflowDeployments is
+// empty the reconciler does not set any WorkflowDeployed condition and still reaches Active.
+func TestWorkflowDeployments_EmptySpec(t *testing.T) {
+	ls := baseLS("wf-empty-spec")
+	// No WorkflowDeployments field — opt-in is off.
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active", got.Status.Phase)
+	}
+	if !conditionAbsent(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Errorf("expected no WorkflowDeployed condition, but found one: reason=%s",
+			conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed))
+	}
+}
+
+// TestWorkflowDeployments_GetEdgeDeploymentsError verifies that a GetEdgeDeployments
+// error sets Phase=Degraded with WorkflowDeployed=False/ReleaseFailed.
+func TestWorkflowDeployments_GetEdgeDeploymentsError(t *testing.T) {
+	ls := baseLS("wf-get-error")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-1", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return nil, errors.New("losant API unavailable")
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=False")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "ReleaseFailed" {
+		t.Errorf("WorkflowDeployed reason: got %q, want ReleaseFailed", r)
+	}
+}
+
+// TestWorkflowDeployments_AllDeployed verifies that when all workflows report
+// currentVersion == desiredVersion == spec.version, the condition is True/Deployed.
+func TestWorkflowDeployments_AllDeployed(t *testing.T) {
+	ls := baseLS("wf-all-deployed")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-1", Version: "v1.0"},
+		{FlowID: "flow-2", Version: "v2.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return []losant.EdgeDeploymentStatus{
+			{FlowID: "flow-1", CurrentVersion: "v1.0", DesiredVersion: "v1.0"},
+			{FlowID: "flow-2", CurrentVersion: "v2.0", DesiredVersion: "v2.0"},
+		}, nil
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active", got.Status.Phase)
+	}
+	if !conditionTrue(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=True")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "Deployed" {
+		t.Errorf("WorkflowDeployed reason: got %q, want Deployed", r)
+	}
+}
+
+// TestWorkflowDeployments_DesiredMatchesButCurrentDiffers verifies that when
+// desiredVersion already matches spec.version but currentVersion doesn't, the
+// condition is True/DeploymentPending and no ReleaseWorkflow call is made.
+func TestWorkflowDeployments_DesiredMatchesButCurrentDiffers(t *testing.T) {
+	ls := baseLS("wf-desired-pending")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-1", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return []losant.EdgeDeploymentStatus{
+			{FlowID: "flow-1", CurrentVersion: "v0.9", DesiredVersion: "v1.0"},
+		}, nil
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active", got.Status.Phase)
+	}
+	if !conditionTrue(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=True")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "DeploymentPending" {
+		t.Errorf("WorkflowDeployed reason: got %q, want DeploymentPending", r)
+	}
+	if len(ml.ReleaseWorkflowCalls) != 0 {
+		t.Errorf("ReleaseWorkflow should not be called when desiredVersion already matches; got %d calls", len(ml.ReleaseWorkflowCalls))
+	}
+}
+
+// TestWorkflowDeployments_WorkflowNotFound verifies that ErrWorkflowNotFound from
+// ReleaseWorkflow sets Phase=Degraded with WorkflowDeployed=False/WorkflowNotFound.
+func TestWorkflowDeployments_WorkflowNotFound(t *testing.T) {
+	ls := baseLS("wf-not-found")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-missing", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return nil, nil // flow not in Losant yet
+	}
+	ml.ReleaseWorkflowFunc = func(_ context.Context, _, _, _, _ string) error {
+		return losant.ErrWorkflowNotFound
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=False")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "WorkflowNotFound" {
+		t.Errorf("WorkflowDeployed reason: got %q, want WorkflowNotFound", r)
+	}
+}
+
+// TestWorkflowDeployments_ReleaseError verifies that a generic ReleaseWorkflow error
+// sets Phase=Degraded with WorkflowDeployed=False/ReleaseFailed.
+func TestWorkflowDeployments_ReleaseError(t *testing.T) {
+	ls := baseLS("wf-release-error")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-1", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return nil, nil // no current deployments — triggers release attempt
+	}
+	ml.ReleaseWorkflowFunc = func(_ context.Context, _, _, _, _ string) error {
+		return errors.New("internal server error")
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=False")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "ReleaseFailed" {
+		t.Errorf("WorkflowDeployed reason: got %q, want ReleaseFailed", r)
+	}
+}
+
+// TestWorkflowDeployments_ReleaseSucceedsPending verifies that when ReleaseWorkflow
+// succeeds for an out-of-date workflow, the condition is True/DeploymentPending
+// (GEA has not confirmed the switch yet).
+func TestWorkflowDeployments_ReleaseSucceedsPending(t *testing.T) {
+	ls := baseLS("wf-release-pending")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-1", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		// desiredVersion is still old — ReleaseWorkflow will be called.
+		return []losant.EdgeDeploymentStatus{
+			{FlowID: "flow-1", CurrentVersion: "v0.9", DesiredVersion: "v0.9"},
+		}, nil
+	}
+	// ReleaseWorkflow default returns nil (success).
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active", got.Status.Phase)
+	}
+	if !conditionTrue(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=True")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "DeploymentPending" {
+		t.Errorf("WorkflowDeployed reason: got %q, want DeploymentPending", r)
+	}
+	if len(ml.ReleaseWorkflowCalls) != 1 {
+		t.Errorf("expected 1 ReleaseWorkflow call, got %d", len(ml.ReleaseWorkflowCalls))
+	}
+}
+
+// TestWorkflowDeployments_WrappedErrWorkflowNotFound verifies that the controller
+// uses errors.Is (not ==) when inspecting ErrWorkflowNotFound, so the wrapped form
+// returned by the real HTTPClient is handled the same as the sentinel itself.
+func TestWorkflowDeployments_WrappedErrWorkflowNotFound(t *testing.T) {
+	ls := baseLS("wf-wrapped-not-found")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-missing", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return nil, nil
+	}
+	ml.ReleaseWorkflowFunc = func(_ context.Context, _, _, _, _ string) error {
+		// Simulate what the real HTTPClient returns: a wrapped sentinel.
+		return fmt.Errorf("%w: status 404 — flow not found in Losant", losant.ErrWorkflowNotFound)
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseDegraded {
+		t.Errorf("Phase: got %q, want Degraded", got.Status.Phase)
+	}
+	if !conditionFalse(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed) {
+		t.Error("expected WorkflowDeployed=False")
+	}
+	if r := conditionReason(got.Status.Conditions, losantv1alpha1.ConditionWorkflowDeployed); r != "WorkflowNotFound" {
+		t.Errorf("WorkflowDeployed reason: got %q, want WorkflowNotFound (wrapped error must be detected via errors.Is)", r)
+	}
+}
+
+// TestWorkflowDeployments_FlowIdAbsentFromLosantList verifies that when a flowId
+// declared in spec is not present in the Losant deployment list, ReleaseWorkflow
+// is still called. This is a regression guard for the bug in #357 where valid
+// flowIds were incorrectly reported as not found.
+func TestWorkflowDeployments_FlowIdAbsentFromLosantList(t *testing.T) {
+	ls := baseLS("wf-absent-flow")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-new", Version: "v1.0"},
+	}
+	ml := losant.NewMockClient()
+	// Losant returns deployments for a different flow — spec flow is absent.
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return []losant.EdgeDeploymentStatus{
+			{FlowID: "flow-other", CurrentVersion: "v9.0", DesiredVersion: "v9.0"},
+		}, nil
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	if len(ml.ReleaseWorkflowCalls) != 1 {
+		t.Fatalf("expected 1 ReleaseWorkflow call for absent flowId, got %d", len(ml.ReleaseWorkflowCalls))
+	}
+	call := ml.ReleaseWorkflowCalls[0]
+	if call.FlowID != "flow-new" {
+		t.Errorf("ReleaseWorkflow flowID: got %q, want %q", call.FlowID, "flow-new")
+	}
+	if call.Version != "v1.0" {
+		t.Errorf("ReleaseWorkflow version: got %q, want %q", call.Version, "v1.0")
+	}
+}
+
+// TestWorkflowDeployments_MultipleFlows_OnlyStaleReleased verifies that when
+// multiple workflows are declared and some are already at the correct version,
+// only the stale ones trigger a ReleaseWorkflow call.
+func TestWorkflowDeployments_MultipleFlows_OnlyStaleReleased(t *testing.T) {
+	ls := baseLS("wf-multi-partial")
+	ls.Spec.WorkflowDeployments = []losantv1alpha1.WorkflowDeployment{
+		{FlowID: "flow-current", Version: "v2.0"},
+		{FlowID: "flow-stale", Version: "v3.0"},
+	}
+	ml := losant.NewMockClient()
+	ml.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]losant.EdgeDeploymentStatus, error) {
+		return []losant.EdgeDeploymentStatus{
+			{FlowID: "flow-current", CurrentVersion: "v2.0", DesiredVersion: "v2.0"},
+			{FlowID: "flow-stale", CurrentVersion: "v1.0", DesiredVersion: "v1.0"},
+		}, nil
+	}
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	if len(ml.ReleaseWorkflowCalls) != 1 {
+		t.Fatalf("expected exactly 1 ReleaseWorkflow call, got %d: %v", len(ml.ReleaseWorkflowCalls), ml.ReleaseWorkflowCalls)
+	}
+	call := ml.ReleaseWorkflowCalls[0]
+	if call.FlowID != "flow-stale" {
+		t.Errorf("ReleaseWorkflow called for wrong flow: got %q, want flow-stale", call.FlowID)
 	}
 }
