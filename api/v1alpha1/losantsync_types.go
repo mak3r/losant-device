@@ -30,6 +30,16 @@ const (
 	PhaseSuspended    LosantSyncPhase = "Suspended"
 )
 
+const ConditionWorkflowDeployed = "WorkflowDeployed"
+
+// WorkflowDeployment declares a single Edge Workflow version to deploy to this cluster's Edge Compute device.
+type WorkflowDeployment struct {
+	// FlowID is the Losant Edge Workflow ID.
+	FlowID string `json:"flowId"`
+	// Version is the named workflow version to deploy.
+	Version string `json:"version"`
+}
+
 // SecretRef identifies a Kubernetes Secret by name and namespace.
 type SecretRef struct {
 	// +kubebuilder:validation:Required
@@ -102,6 +112,11 @@ type LosantSyncSpec struct {
 	// DeviceRecipeID is an optional Losant device recipe ID used for bulk peripheral provisioning.
 	// +optional
 	DeviceRecipeID string `json:"deviceRecipeID,omitempty"`
+
+	// WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.
+	// If omitted, no workflow deployment is attempted.
+	// +optional
+	WorkflowDeployments []WorkflowDeployment `json:"workflowDeployments,omitempty"`
 
 	// Suspend disables all reconciliation when true.
 	// +optional
