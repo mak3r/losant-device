@@ -724,7 +724,7 @@ func TestReleaseWorkflow_WorkflowNotFound(t *testing.T) {
 	}
 }
 
-func TestReleaseWorkflow_SendsFlowVersionField(t *testing.T) {
+func TestReleaseWorkflow_SendsVersionField(t *testing.T) {
 	var gotBody map[string]interface{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
@@ -738,11 +738,12 @@ func TestReleaseWorkflow_SendsFlowVersionField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReleaseWorkflow: unexpected error: %v", err)
 	}
-	if gotBody["flowVersion"] != "v1.0.0" {
-		t.Errorf("flowVersion: got %v, want %q (regression: Losant API requires flowVersion, not version)", gotBody["flowVersion"], "v1.0.0")
+	// Losant release API uses "version", not "flowVersion"
+	if gotBody["version"] != "v1.0.0" {
+		t.Errorf("version: got %v, want %q", gotBody["version"], "v1.0.0")
 	}
-	if gotBody["version"] != nil {
-		t.Errorf("version field must be absent: got %v (regression guard: wrong field caused 404 from Losant)", gotBody["version"])
+	if gotBody["flowVersion"] != nil {
+		t.Errorf("flowVersion field must be absent: got %v (wrong field causes 404 from Losant)", gotBody["flowVersion"])
 	}
 	if gotBody["flowId"] != "flow-abc" {
 		t.Errorf("flowId: got %v, want %q", gotBody["flowId"], "flow-abc")
