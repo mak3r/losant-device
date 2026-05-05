@@ -24,8 +24,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@v3
       - run: make test
-      - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:${{ github.ref_name }}
-      - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:latest
+      - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:${{ github.ref_name }} CONTAINER_TOOL=docker
+      - run: make docker-buildx IMG=ghcr.io/mak3r/losant-device:latest CONTAINER_TOOL=docker
       - name: Verify multi-arch manifest
         run: |
           MANIFEST=$(docker buildx imagetools inspect ghcr.io/mak3r/losant-device:${{ github.ref_name }})
