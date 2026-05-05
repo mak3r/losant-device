@@ -342,6 +342,24 @@ func (m *MockClient) ReleaseWorkflow(ctx context.Context, applicationID, deviceI
 	return nil
 }
 
+// GetEnsureClusterDeviceCalls returns a thread-safe snapshot of all recorded EnsureClusterDevice calls.
+func (m *MockClient) GetEnsureClusterDeviceCalls() []EnsureClusterDeviceCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]EnsureClusterDeviceCall, len(m.EnsureClusterDeviceCalls))
+	copy(out, m.EnsureClusterDeviceCalls)
+	return out
+}
+
+// GetEnsureNodeDeviceCalls returns a thread-safe snapshot of all recorded EnsureNodeDevice calls.
+func (m *MockClient) GetEnsureNodeDeviceCalls() []EnsureNodeDeviceCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]EnsureNodeDeviceCall, len(m.EnsureNodeDeviceCalls))
+	copy(out, m.EnsureNodeDeviceCalls)
+	return out
+}
+
 // GetEdgeDeployments implements LosantClient.
 func (m *MockClient) GetEdgeDeployments(ctx context.Context, applicationID, deviceID string) ([]EdgeDeploymentStatus, error) {
 	m.mu.Lock()

@@ -151,13 +151,17 @@ spec:
   #   - flowId: "<workflow-id>"   # Losant workflow ID (from the Losant UI URL or API).
   #     version: "v1.0.0"         # Must exactly match a saved version name in Losant.
   #                                # See Step 4 for how to find or create a named version snapshot.
+  # tags:                                        # Optional — identity tags applied to the Losant cluster device.
+  #   manager: "https://rancher.example.com"    # Management plane URI (not validated).
+  #   uid: "prod-cluster-us-west-01"            # Stable unique cluster identifier (not validated).
+  #   gps: "37.7749,-122.4194"                  # Physical location in decimal-degree format (not validated).
 ```
 
 ```bash
 kubectl apply -f losantsync.yaml
 ```
 
-> See [docs/architecture.md](../architecture.md#crd-losantsync) for the full CRD field reference including `cronSchedule`, `rancherURL`, and `deviceRecipeID`.
+> See [docs/architecture.md](../architecture.md#crd-losantsync) for the full CRD field reference including `cronSchedule`, `rancherURL`, `deviceRecipeID`, and `tags`.
 
 ---
 

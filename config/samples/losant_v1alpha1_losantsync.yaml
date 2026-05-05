@@ -18,3 +18,7 @@ spec:
     port: 8080
   # rancherURL: "https://rancher.example.com"  # Optional: link shown on Losant dashboard
   # deviceRecipeID: "your-recipe-id"            # Optional: Losant device recipe for bulk provisioning
+  # tags:                                        # Optional: identity tags forwarded to the Losant cluster device
+  #   manager: "https://rancher.example.com"    # Management plane URI for this cluster
+  #   uid: "cluster-abc-123"                    # Stable unique identifier across management systems
+  #   gps: "37.7749,-122.4194"                  # Physical location in decimal-degree coordinate format

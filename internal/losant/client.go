@@ -455,5 +455,14 @@ func tagsFromSpec(spec losantv1alpha1.LosantSyncSpec) []Tag {
 	if spec.RancherURL != "" {
 		tags = append(tags, Tag{Key: "rancherURL", Value: spec.RancherURL})
 	}
+	if spec.Tags.Manager != "" {
+		tags = append(tags, Tag{Key: "manager", Value: spec.Tags.Manager})
+	}
+	if spec.Tags.UID != "" {
+		tags = append(tags, Tag{Key: "uid", Value: spec.Tags.UID})
+	}
+	if spec.Tags.GPS != "" {
+		tags = append(tags, Tag{Key: "gps", Value: spec.Tags.GPS})
+	}
 	return tags
 }
