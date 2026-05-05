@@ -125,4 +125,35 @@ var _ = Describe("LosantSyncReconciler", func() {
 			time.Sleep(500 * time.Millisecond)
 		})
 	})
+
+	Context("cluster tags", func() {
+		It("forwards ClusterTags spec fields to EnsureClusterDevice on reconcile", func() {
+			ls := baseLosantSync("test-cluster-tags-fwd")
+			ls.Spec.Tags = losantv1alpha1.ClusterTags{
+				Manager: "https://mgmt.example.com",
+				UID:     "uid-test-123",
+				GPS:     "37.7749,-122.4194",
+			}
+			Expect(k8sClient.Create(ctx, ls)).To(Succeed())
+			DeferCleanup(func() { _ = k8sClient.Delete(ctx, ls) })
+
+			Eventually(func(g Gomega) {
+				var got losantv1alpha1.LosantSync
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ls.Name}, &got)).To(Succeed())
+				g.Expect(got.Status.Phase).To(Equal(losantv1alpha1.PhaseActive))
+			}, timeout, interval).Should(Succeed())
+
+			calls := mockLosantClient.GetEnsureClusterDeviceCalls()
+			found := false
+			for _, c := range calls {
+				if c.Spec.Tags.Manager == "https://mgmt.example.com" &&
+					c.Spec.Tags.UID == "uid-test-123" &&
+					c.Spec.Tags.GPS == "37.7749,-122.4194" {
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "EnsureClusterDevice must have been called with all three ClusterTag fields set")
+		})
+	})
 })
