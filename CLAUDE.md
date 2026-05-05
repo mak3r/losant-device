@@ -39,7 +39,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 
 The merge manager is a gatekeeper, not a coder. When reviewing a PR it:
 
-1. Runs `make test` — if it fails, creates a GitHub issue labeled `persona/<owner>` and `type/bug`, comments on the PR with the issue link, and does NOT merge
+1. Runs `make test` — if it fails, creates a GitHub issue labeled `persona/<owner>` and `bug`, comments on the PR with the issue link, and does NOT merge
 2. Checks for open `type/security` issues on the branch — if any exist, blocks merge and creates a blocking issue
 3. If CI is green and no blockers exist, merges the PR to `develop` with `gh pr merge <n> --merge --delete-branch` (no approval step — all personas share one GitHub account, so self-approval is not possible)
 4. Never edits source files, never force-pushes, never resolves conflicts directly
@@ -53,7 +53,7 @@ For releases: when `develop` is stable, the merge manager creates a PR from `dev
 The product designer is a trusted advisor and orchestrator, not an implementer. When invoked it:
 
 1. Designs system architecture and documents decisions in `.claude/plans/`
-2. Breaks work into GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
+2. Breaks work into GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
 3. Identifies dependencies between issues and personas; sets blocking relationships explicitly
 4. Advises on trade-offs and scope — proposes changes but never unilaterally implements them
 5. Reviews open issues and PRs to check alignment with architectural intent
@@ -70,8 +70,8 @@ The triage agent is an intake specialist, not an implementer. When invoked it:
 2. Asks clarifying questions until it has sufficient information to produce a complete report
 3. Determines the correct persona(s), phase, and type for each issue
 4. Presents a draft of every issue to the human for confirmation before creating anything
-5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and `type/<task|bug|security>` labels
-6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `type/bug` AND `persona/test-engineer` + `type/task`)
+5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
+6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `bug` AND `persona/test-engineer` + `type/task`)
 7. Never commits code, never modifies any file, never creates `.claude/plans/` documents
 
 To invoke: run the `/triage` Claude Code skill.
@@ -80,12 +80,12 @@ To invoke: run the `/triage` Claude Code skill.
 
 | Symptom | Primary Issue | Secondary Issue |
 |---|---|---|
-| Code crash / broken functionality | `persona/developer` + `type/bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
+| Code crash / broken functionality | `persona/developer` + `bug` | `persona/test-engineer` + `type/task` (if test coverage is missing) |
 | Usability confusion / unclear docs | `persona/docs` + `type/task` | — |
 | Security concern / RBAC / credential exposure | `persona/security` + `type/security` | — |
 | Architecture question / new feature design | `persona/product-designer` + `type/task` | — |
-| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `type/bug` | — |
-| E2E / acceptance test failure | `persona/qa` + `type/bug` | — |
+| CI/CD failure / deployment issue / Helm chart bug | `persona/gitops-manager` + `bug` | — |
+| E2E / acceptance test failure | `persona/qa` + `bug` | — |
 
 ### Phase Determination
 
@@ -105,7 +105,7 @@ The test engineer does not have an independent feature branch. Instead:
 3. Both push to `feature/developer/<name>` until `make test` passes cleanly
 4. A single PR is opened containing both implementation and tests
 
-If the test engineer finds a bug, they open a GitHub issue labeled `persona/developer` and `type/bug`. They do not patch the implementation themselves.
+If the test engineer finds a bug, they open a GitHub issue labeled `persona/developer` and `bug`. They do not patch the implementation themselves.
 
 ## Docs Agent
 
@@ -128,7 +128,7 @@ Finishing your own file edits and committing is necessary but not sufficient. If
 After completing work that unblocks another persona, choose one of:
 
 1. **Same issue, next persona**: Remove your `persona/<name>` label from the issue, add `persona/<next>` label, and comment with what was done and exactly what the next persona must do.
-2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and `type/<task|bug|security>` with explicit instructions, then close your issue.
+2. **New issue for distinct task**: Create a new issue labeled `persona/<next>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` with explicit instructions, then close your issue.
 
 Without a handoff, the queue-based `watch-work` model breaks — agents only pick up issues labeled for their persona.
 
@@ -243,7 +243,7 @@ Changing these files has broad impact — coordinate with other personas before 
 When creating issues, always apply:
 - A `persona/<name>` label for the responsible persona
 - A `phase/<n>` label for the implementation phase
-- A `type/task`, `type/bug`, or `type/security` label
+- A `bug`, `type/task`, or `type/security` label
 
 The merge manager uses these labels to route notifications and gate PRs.
 

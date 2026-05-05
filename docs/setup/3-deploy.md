@@ -147,6 +147,10 @@ spec:
   gea:
     serviceRef: "losant-gea"
     port: 8080
+  # workflowDeployments:          # Optional — declare Edge Workflows to keep deployed on the cluster GEA.
+  #   - flowId: "<workflow-id>"   # Losant workflow ID (from the Losant UI URL or API).
+  #     version: "v1.0.0"         # Must exactly match a saved version name in Losant.
+  #                                # See Step 4 for how to find or create a named version snapshot.
 ```
 
 ```bash

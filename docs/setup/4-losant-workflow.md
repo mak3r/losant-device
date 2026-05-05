@@ -42,7 +42,7 @@ spec:
 | Field | Description |
 |---|---|
 | `flowId` | Losant Edge Workflow ID (see [Finding a workflow ID](#finding-a-workflow-id) below) |
-| `version` | Named version string to deploy (must match an existing version in the Losant UI) |
+| `version` | Named version string to deploy — must exactly match a saved version name in Losant (see [Finding or creating a named workflow version](#finding-or-creating-a-named-workflow-version) below) |
 
 `workflowDeployments` is optional. If omitted, no workflow deployment is attempted and the `WorkflowDeployed` condition is not set.
 
@@ -66,6 +66,24 @@ curl -s -H "Authorization: Bearer <api-token>" \
 
 ---
 
+## Finding or creating a named workflow version
+
+Losant **auto-names version snapshots using timestamps** (e.g. `"2026-05-05T12-39-04"`) unless you create a snapshot with an explicit name. If you write `version: "v1.0.0"` in your CR but the workflow has no snapshot with that exact name, the controller returns `WorkflowDeployed=False` with reason `WorkflowNotFound` and a 404 in the logs.
+
+**To find or create a named version snapshot:**
+
+1. In the Losant UI, open your Application and select **Workflows** in the left side menu.
+2. Select the **Edge** tab in the center pane near the top.
+3. Click the Edge Workflow you want to deploy.
+4. Select the **Versions** tab on the right side of the editor window.
+5. The currently active version name is displayed at the top.
+6. Use the filter field to search for other existing saved versions.
+7. To create a new named version: click **Create Version**, enter a meaningful name (e.g. `v1.0.0`), and save. That name is now valid for the `version` field.
+
+> **Tip**: If you are using auto-generated timestamp versions (e.g. the default Losant snapshot name), copy the exact string shown in the Versions tab — including the `T` and dashes — and paste it into your CR.
+
+---
+
 ## Monitor deployment status
 
 The controller sets the `WorkflowDeployed` condition on the `LosantSync` status after processing workflow deployments:
@@ -79,7 +97,7 @@ kubectl get losantsync <NAME> -o jsonpath='{.status.conditions[?(@.type=="Workfl
 | `Deployed` | All declared workflow versions are confirmed running on the GEA |
 | `DeploymentPending` | Release was sent to Losant; awaiting GEA confirmation (normal when GEA was just restarted or reconnected) |
 | `ReleaseFailed` | Losant API call to release the workflow failed; check controller logs |
-| `WorkflowNotFound` | A declared `flowId` does not exist in the Losant Application; verify the ID |
+| `WorkflowNotFound` | The `flowId` does not exist, or the `version` string does not match any saved version snapshot in Losant; see [Finding or creating a named workflow version](#finding-or-creating-a-named-workflow-version) and [Troubleshooting](7-troubleshooting.md#workflowdeployedfalse--reason-workflownotfound) |
 
 `DeploymentPending` resolves automatically on the next reconcile cycle once the GEA confirms receipt of the deployment.
 
