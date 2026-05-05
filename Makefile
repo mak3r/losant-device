@@ -38,6 +38,11 @@ generate: controller-gen ## Generate DeepCopy, DeepCopyInto, and DeepCopyObject 
 .PHONY: manifests
 manifests: controller-gen ## Generate CRD, RBAC, and webhook manifests
 	$(CONTROLLER_GEN) rbac:roleName=manager-role crd webhook paths="./..." output:crd:artifacts:config=config/crd/bases output:rbac:artifacts:config=config/rbac
+	$(MAKE) sync-helm-crd
+
+.PHONY: sync-helm-crd
+sync-helm-crd: ## Sync helm/templates/crd.yaml spec from the generated CRD (preserves Helm metadata)
+	python3 hack/sync-helm-crd.py
 
 .PHONY: fmt
 fmt: ## Run go fmt
