@@ -7,7 +7,7 @@ Install the losant-device operator and GEA with Helm, then apply the LosantSync 
 - **Helm 3.8 or later** — required for OCI registry support (`helm version`)
 - `kubectl` with access to your cluster
 - Access to `ghcr.io` (no authentication required for public images)
-- `losant-provisioning-credentials` Secret created (see [Step 2](2-kubernetes-preparation.md))
+- Application API Token from [Step 1](1-losant-application.md)
 
 ---
 
@@ -52,6 +52,22 @@ helm install losant-device \
 This deploys:
 - The losant-device controller Deployment and RBAC
 - The GEA Deployment, Service, PersistentVolumeClaim, and ServiceAccount
+
+---
+
+## Create the provisioning Secret
+
+Now that Helm has created the `losant-system` namespace, create the Secret the controller uses to authenticate to the Losant REST API. Replace `<application-api-token-from-step-1>` with the token from [Step 1](1-losant-application.md).
+
+```bash
+kubectl create secret generic losant-provisioning-credentials \
+  --from-literal=api-token=<application-api-token-from-step-1> \
+  -n losant-system
+```
+
+> **Key name matters**: The controller reads the `api-token` key specifically. Any other key name causes a startup error.
+
+> **Required API token scopes**: The Application API Token must include `devices.*` and `deviceRecipes.*` for device provisioning. If you use `spec.workflowDeployments`, it must also include `edgeDeployments.release` — without this scope, the controller will enter `Degraded` phase with `ReleaseFailed` on the `WorkflowDeployed` condition. Configure scopes in the Losant UI under **Application → Access Keys → Edit**.
 
 ---
 

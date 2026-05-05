@@ -1,6 +1,6 @@
 # Step 2: Kubernetes Preparation
 
-Create the provisioning Secret the controller needs to authenticate to the Losant REST API.
+Verify that `kubectl` is connected to your target cluster and gather the information you need before deploying.
 
 ## Prerequisites
 
@@ -20,26 +20,22 @@ Confirm the context points to the cluster you intend to deploy to before proceed
 
 ---
 
-## Create the provisioning Secret
+## About the provisioning Secret
 
-The Helm chart creates the `losant-system` namespace automatically. If you are pre-creating it:
+The controller authenticates to the Losant REST API using a Kubernetes Secret named `losant-provisioning-credentials`. You will create this Secret in Step 3, after Helm installs the operator and creates the `losant-system` namespace.
 
-```bash
-kubectl create namespace losant-system --dry-run=client -o yaml | kubectl apply -f -
-```
+> **Do not pre-create the `losant-system` namespace.** Helm creates it with proper ownership metadata during `helm install`. Pre-creating the namespace causes an `invalid ownership metadata` error that prevents installation.
 
-Create the provisioning Secret:
+The Secret requires exactly one key:
 
-```bash
-kubectl create secret generic losant-provisioning-credentials \
-  --from-literal=api-token=<application-api-token-from-step-1> \
-  -n losant-system
-```
+| Key | Value |
+|---|---|
+| `api-token` | Application API Token from Step 1 |
 
-> **Key name matters**: The controller reads a single `api-token` key from this Secret. Any other key name causes a startup error.
+> **Key name matters**: The controller reads the `api-token` key specifically. Any other key name causes a startup error.
 
 ---
 
 ## Next step
 
-**[Step 3 → Deploy](3-deploy.md)** — install the operator with Helm and apply the LosantSync CR.
+**[Step 3 → Deploy](3-deploy.md)** — install the operator with Helm, create the provisioning Secret, and apply the LosantSync CR.

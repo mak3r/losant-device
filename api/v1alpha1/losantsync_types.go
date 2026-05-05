@@ -30,6 +30,16 @@ const (
 	PhaseSuspended    LosantSyncPhase = "Suspended"
 )
 
+const ConditionWorkflowDeployed = "WorkflowDeployed"
+
+// WorkflowDeployment declares a single Edge Workflow version to deploy to this cluster's Edge Compute device.
+type WorkflowDeployment struct {
+	// FlowID is the Losant Edge Workflow ID.
+	FlowID string `json:"flowId"`
+	// Version is the named workflow version to deploy.
+	Version string `json:"version"`
+}
+
 // SecretRef identifies a Kubernetes Secret by name and namespace.
 type SecretRef struct {
 	// +kubebuilder:validation:Required
@@ -103,6 +113,11 @@ type LosantSyncSpec struct {
 	// +optional
 	DeviceRecipeID string `json:"deviceRecipeID,omitempty"`
 
+	// WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.
+	// If omitted, no workflow deployment is attempted.
+	// +optional
+	WorkflowDeployments []WorkflowDeployment `json:"workflowDeployments,omitempty"`
+
 	// Suspend disables all reconciliation when true.
 	// +optional
 	// +kubebuilder:default=false
@@ -148,7 +163,7 @@ type LosantSyncStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="GEA",type=string,JSONPath=`.status.conditions[?(@.type=="GEAReachable")].status`
 // +kubebuilder:printcolumn:name="Last Sync",type=date,JSONPath=`.status.lastSyncTime`
-// +kubebuilder:printcolumn:name="Next Sync",type=date,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Next Sync",type=string,JSONPath=`.status.nextScheduledTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // LosantSync is the Schema for the losantsyncs API.

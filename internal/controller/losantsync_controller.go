@@ -79,9 +79,15 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.handleDeletion(ctx, &ls)
 	}
 
-	// Add finalizer on first non-deleted reconcile; requeue to confirm write.
+	// Add finalizer on first non-deleted reconcile. Explicit requeue is required
+	// because GenerationChangedPredicate filters out metadata-only watch events
+	// (finalizer writes do not bump .metadata.generation), so without Requeue the
+	// reconciler would stall permanently after this Update.
 	if controllerutil.AddFinalizer(&ls, "losant.io/device-cleanup") {
-		return ctrl.Result{}, r.Update(ctx, &ls)
+		if err := r.Update(ctx, &ls); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Suspend: halt all reconciliation.
@@ -196,6 +202,13 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 	setCondition(&ls, "DevicesProvisioned", metav1.ConditionTrue, "Provisioned", "all devices confirmed in Losant")
 
+	// Step 5b: ensure Edge Workflow deployments match spec.
+	if wfReason, wfMsg, wfErr := ensureWorkflowDeployments(ctx, lc, &ls); wfErr != nil {
+		return r.setDegraded(ctx, &ls, losantv1alpha1.ConditionWorkflowDeployed, wfReason, wfMsg)
+	} else if wfReason != "" {
+		setCondition(&ls, losantv1alpha1.ConditionWorkflowDeployed, metav1.ConditionTrue, wfReason, wfMsg)
+	}
+
 	// Step 6: report cluster state to GEA.
 	if err := gc.ReportState(ctx, gea.StatePayload{
 		DeviceID:   clusterDeviceID,
@@ -291,6 +304,47 @@ func (r *LosantSyncReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&losantv1alpha1.LosantSync{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+}
+
+// ensureWorkflowDeployments inspects edge deployment state and calls ReleaseWorkflow for any
+// workflow whose desiredVersion does not yet match spec. Returns the condition reason, message,
+// and a non-nil error when a release fails or a workflow is not found.
+// Returns empty strings and nil when spec.WorkflowDeployments is empty (opt-in behaviour).
+func ensureWorkflowDeployments(ctx context.Context, lc losant.LosantClient, ls *losantv1alpha1.LosantSync) (reason, message string, err error) {
+	if len(ls.Spec.WorkflowDeployments) == 0 {
+		return "", "", nil
+	}
+
+	deployments, err := lc.GetEdgeDeployments(ctx, ls.Spec.ApplicationID, ls.Status.ClusterDeviceID)
+	if err != nil {
+		return "ReleaseFailed", err.Error(), err
+	}
+
+	byFlowID := make(map[string]losant.EdgeDeploymentStatus, len(deployments))
+	for _, d := range deployments {
+		byFlowID[d.FlowID] = d
+	}
+
+	allConfirmed := true
+	for _, wd := range ls.Spec.WorkflowDeployments {
+		current := byFlowID[wd.FlowID]
+		if current.DesiredVersion != wd.Version {
+			if releaseErr := lc.ReleaseWorkflow(ctx, ls.Spec.ApplicationID, ls.Status.ClusterDeviceID, wd.FlowID, wd.Version); releaseErr != nil {
+				if releaseErr == losant.ErrWorkflowNotFound {
+					return "WorkflowNotFound", fmt.Sprintf("flowId %s not found", wd.FlowID), releaseErr
+				}
+				return "ReleaseFailed", releaseErr.Error(), releaseErr
+			}
+			allConfirmed = false
+		} else if current.CurrentVersion != wd.Version {
+			allConfirmed = false
+		}
+	}
+
+	if allConfirmed {
+		return "Deployed", "all workflow versions confirmed deployed", nil
+	}
+	return "DeploymentPending", "release queued, awaiting GEA confirmation", nil
 }
 
 // setDegraded sets the given condition to False, phase to Degraded, advances
