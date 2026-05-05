@@ -373,6 +373,109 @@ func TestCreateDevice_EmptyDeviceIDError(t *testing.T) {
 	}
 }
 
+// --- tagsFromSpec: ClusterTags ---
+
+func TestTagsFromSpec_AllClusterTagsSet(t *testing.T) {
+	spec := newTestSpec()
+	spec.Tags = losantv1alpha1.ClusterTags{
+		Manager: "https://management.example.com",
+		UID:     "cluster-uid-abc",
+		GPS:     "37.7749,-122.4194",
+	}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["manager"] != "https://management.example.com" {
+		t.Errorf("manager: got %q, want %q", tagMap["manager"], "https://management.example.com")
+	}
+	if tagMap["uid"] != "cluster-uid-abc" {
+		t.Errorf("uid: got %q, want %q", tagMap["uid"], "cluster-uid-abc")
+	}
+	if tagMap["gps"] != "37.7749,-122.4194" {
+		t.Errorf("gps: got %q, want %q", tagMap["gps"], "37.7749,-122.4194")
+	}
+}
+
+func TestTagsFromSpec_PartialClusterTags_OnlyUID(t *testing.T) {
+	spec := newTestSpec()
+	spec.Tags = losantv1alpha1.ClusterTags{UID: "uid-xyz"}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["uid"] != "uid-xyz" {
+		t.Errorf("uid: got %q, want %q", tagMap["uid"], "uid-xyz")
+	}
+	if _, ok := tagMap["manager"]; ok {
+		t.Error("manager tag must not appear when Manager field is empty")
+	}
+	if _, ok := tagMap["gps"]; ok {
+		t.Error("gps tag must not appear when GPS field is empty")
+	}
+}
+
+func TestTagsFromSpec_ZeroValueClusterTags_BaseTagsPreserved(t *testing.T) {
+	spec := newTestSpec()
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["clusterName"] != "test-cluster" {
+		t.Errorf("clusterName: got %q, want %q", tagMap["clusterName"], "test-cluster")
+	}
+	if tagMap["region"] != "us-west-1" {
+		t.Errorf("region: got %q, want %q", tagMap["region"], "us-west-1")
+	}
+	for _, k := range []string{"manager", "uid", "gps"} {
+		if _, ok := tagMap[k]; ok {
+			t.Errorf("%s tag must not appear when ClusterTags is zero-value", k)
+		}
+	}
+}
+
+func TestTagsFromSpec_AllFieldsSet_FullTagSet(t *testing.T) {
+	spec := newTestSpec()
+	spec.RancherURL = "https://rancher.example.com"
+	spec.Tags = losantv1alpha1.ClusterTags{
+		Manager: "https://mgmt.example.com",
+		UID:     "uid-123",
+		GPS:     "40.7128,-74.0060",
+	}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	expected := map[string]string{
+		"clusterName": "test-cluster",
+		"region":      "us-west-1",
+		"rancherURL":  "https://rancher.example.com",
+		"manager":     "https://mgmt.example.com",
+		"uid":         "uid-123",
+		"gps":         "40.7128,-74.0060",
+	}
+	for k, v := range expected {
+		if got := tagMap[k]; got != v {
+			t.Errorf("tag %q: got %q, want %q", k, got, v)
+		}
+	}
+	if len(tags) != len(expected) {
+		t.Errorf("tag count: got %d, want %d; tags: %v", len(tags), len(expected), tags)
+	}
+}
+
 // --- tagsFromSpec: RancherURL branch ---
 
 func TestTagsFromSpec_WithRancherURL(t *testing.T) {
