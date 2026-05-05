@@ -49,7 +49,17 @@ Each cluster maps to:
 - One **Edge Compute device** (the GEA's identity) — cluster-level aggregate metrics
 - One **peripheral device** per k8s node — per-node CPU, memory, pod health
 
-Devices are tagged with `cluster_name`, `region`, `health_status`, and `rancher_url`, enabling Losant's dashboard context variables to filter across the fleet.
+Devices are tagged with `cluster_name`, `region`, `health_status`, and `rancher_url`, enabling Losant's dashboard context variables to filter across the fleet. The cluster device also accepts three optional identity tags (`manager`, `uid`, `gps`) from `spec.tags.*`.
+
+### `spec.tags` reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `spec.tags.manager` | string | No | URI of the management plane responsible for this cluster (e.g., Rancher URL). Not validated. |
+| `spec.tags.uid` | string | No | Stable unique identifier for this cluster across management systems. Not validated. |
+| `spec.tags.gps` | string | No | Physical location of this cluster, typically in decimal-degree format (e.g., `"37.7749,-122.4194"`). Not validated. |
+
+All three fields are optional and unvalidated. They appear on the cluster (Edge Compute) device only — not on node (peripheral) devices.
 
 ## Quick Start
 

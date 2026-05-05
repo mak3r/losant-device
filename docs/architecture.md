@@ -55,6 +55,11 @@ region        = <spec.region>
 rancher_url   = <spec.rancherURL>
 health_status = healthy | degraded | critical   ← updated each sync
 k8s_version   = <serverVersion.GitVersion>
+
+# Optional identity tags from spec.tags.* (omitted if field is empty)
+manager       = <spec.tags.manager>   # management plane URI
+uid           = <spec.tags.uid>       # stable cluster identifier
+gps           = <spec.tags.gps>       # physical location coordinates
 ```
 
 **Attributes** (time-series state data):
@@ -118,6 +123,14 @@ spec:
     port: 8080
 
   deviceRecipeID: "xyz789"         # optional: bulk peripheral provisioning
+
+  # Optional identity tags forwarded to the Losant cluster device only.
+  # All sub-fields are unvalidated strings. Omit the entire block if unused.
+  tags:
+    manager: "https://rancher.example.com"  # management plane URI
+    uid: "prod-cluster-us-west-01"          # stable cluster identifier
+    gps: "37.7749,-122.4194"                # physical location coordinates
+
   suspend: false
 ```
 
