@@ -140,6 +140,27 @@ spec:
                 default: false
                 description: Suspend disables all reconciliation when true.
                 type: boolean
+              tags:
+                description: |-
+                  Tags are optional freeform identity tags forwarded to the Losant cluster
+                  device at provisioning time.
+                properties:
+                  gps:
+                    description: |-
+                      GPS is an arbitrary string representing the physical location of this
+                      cluster, typically in decimal-degree coordinate format.
+                    type: string
+                  manager:
+                    description: |-
+                      Manager is an arbitrary string, typically a URI identifying the
+                      management plane responsible for this cluster.
+                    type: string
+                  uid:
+                    description: |-
+                      UID is an arbitrary string intended to uniquely identify this cluster
+                      across management systems.
+                    type: string
+                type: object
               workflowDeployments:
                 description: |-
                   WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.

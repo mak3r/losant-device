@@ -40,6 +40,25 @@ type WorkflowDeployment struct {
 	Version string `json:"version"`
 }
 
+// ClusterTags holds optional freeform string tags applied to the cluster
+// device in Losant at provisioning time. No values are validated.
+type ClusterTags struct {
+	// Manager is an arbitrary string, typically a URI identifying the
+	// management plane responsible for this cluster.
+	// +optional
+	Manager string `json:"manager,omitempty"`
+
+	// UID is an arbitrary string intended to uniquely identify this cluster
+	// across management systems.
+	// +optional
+	UID string `json:"uid,omitempty"`
+
+	// GPS is an arbitrary string representing the physical location of this
+	// cluster, typically in decimal-degree coordinate format.
+	// +optional
+	GPS string `json:"gps,omitempty"`
+}
+
 // SecretRef identifies a Kubernetes Secret by name and namespace.
 type SecretRef struct {
 	// +kubebuilder:validation:Required
@@ -117,6 +136,11 @@ type LosantSyncSpec struct {
 	// If omitted, no workflow deployment is attempted.
 	// +optional
 	WorkflowDeployments []WorkflowDeployment `json:"workflowDeployments,omitempty"`
+
+	// Tags are optional freeform identity tags forwarded to the Losant cluster
+	// device at provisioning time.
+	// +optional
+	Tags ClusterTags `json:"tags,omitempty"`
 
 	// Suspend disables all reconciliation when true.
 	// +optional
