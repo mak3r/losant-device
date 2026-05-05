@@ -132,6 +132,25 @@ spec:
                 default: false
                 description: Suspend disables all reconciliation when true.
                 type: boolean
+              workflowDeployments:
+                description: |-
+                  WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.
+                  If omitted, no workflow deployment is attempted.
+                items:
+                  description: WorkflowDeployment declares a single Edge Workflow
+                    version to deploy to this cluster's Edge Compute device.
+                  properties:
+                    flowId:
+                      description: FlowID is the Losant Edge Workflow ID.
+                      type: string
+                    version:
+                      description: Version is the named workflow version to deploy.
+                      type: string
+                  required:
+                  - flowId
+                  - version
+                  type: object
+                type: array
             required:
             - applicationID
             - clusterName
