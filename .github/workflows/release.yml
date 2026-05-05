@@ -64,7 +64,7 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           APP_VERSION="${TAG#v}"
           sed -i "s/^version:.*/version: ${APP_VERSION}/" helm/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: ${APP_VERSION}/" helm/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${TAG}/" helm/Chart.yaml
       - name: Package and push Helm chart
         id: helm-push
         env:
