@@ -177,7 +177,7 @@ jobs:
 
           with open("helm/templates/crd.yaml") as f:
               helm_raw = "\n".join(
-                  line for line in f
+                  line.rstrip("\n") for line in f
                   if "{{" not in line
               )
 
