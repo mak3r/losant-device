@@ -352,7 +352,9 @@ func (c *HTTPClient) DeleteDevice(ctx context.Context, applicationID, deviceID s
 }
 
 // ReleaseWorkflow deploys a workflow version to an Edge Compute device via the Losant release API.
-// Returns ErrWorkflowNotFound when the API responds with 404 (flowId not found).
+// Returns ErrWorkflowNotFound (wrapped with the Losant error body) when the API responds with 404.
+// Note: Losant may return 404 when the version does not exist for the given flow, not only when
+// the flow itself is absent.
 func (c *HTTPClient) ReleaseWorkflow(ctx context.Context, applicationID, deviceID, flowID, version string) error {
 	payload := map[string]interface{}{
 		"flowId":    flowID,
@@ -362,7 +364,7 @@ func (c *HTTPClient) ReleaseWorkflow(ctx context.Context, applicationID, deviceI
 	path := fmt.Sprintf("%s/applications/%s/edge/deployments/release", apiBase, applicationID)
 	_, err := c.doRequest(ctx, http.MethodPost, path, payload)
 	if err != nil && strings.Contains(err.Error(), "status 404") {
-		return ErrWorkflowNotFound
+		return fmt.Errorf("%w: %s", ErrWorkflowNotFound, err.Error())
 	}
 	return err
 }

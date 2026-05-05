@@ -724,6 +724,36 @@ func TestReleaseWorkflow_WorkflowNotFound(t *testing.T) {
 	}
 }
 
+func TestReleaseWorkflow_SendsVersionField(t *testing.T) {
+	var gotBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-abc", "v1.0.0")
+	if err != nil {
+		t.Fatalf("ReleaseWorkflow: unexpected error: %v", err)
+	}
+	// Losant release API uses "version", not "flowVersion"
+	if gotBody["version"] != "v1.0.0" {
+		t.Errorf("version: got %v, want %q", gotBody["version"], "v1.0.0")
+	}
+	if gotBody["flowVersion"] != nil {
+		t.Errorf("flowVersion field must be absent: got %v (wrong field causes 404 from Losant)", gotBody["flowVersion"])
+	}
+	if gotBody["flowId"] != "flow-abc" {
+		t.Errorf("flowId: got %v, want %q", gotBody["flowId"], "flow-abc")
+	}
+	deviceIds, ok := gotBody["deviceIds"].([]interface{})
+	if !ok || len(deviceIds) != 1 || deviceIds[0] != "dev-edge-1" {
+		t.Errorf("deviceIds: got %v, want [\"dev-edge-1\"]", gotBody["deviceIds"])
+	}
+}
+
 // --- GetEdgeDeployments ---
 
 func TestGetEdgeDeployments_Success(t *testing.T) {
