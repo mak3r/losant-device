@@ -37,6 +37,10 @@ spec:
   workflowDeployments:
     - flowId: "<losant-workflow-id>"
       version: "v1.0.0"
+  # tags:                                        # Optional — identity tags applied to the Losant cluster device.
+  #   manager: "https://rancher.example.com"    # Management plane URI (not validated).
+  #   uid: "prod-cluster-us-west-01"            # Stable unique cluster identifier (not validated).
+  #   gps: "37.7749,-122.4194"                  # Physical location in decimal-degree format (not validated).
 ```
 
 | Field | Description |
