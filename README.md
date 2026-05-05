@@ -118,6 +118,32 @@ make run           # run controller locally against ~/.kube/config
 make docker-build  # build container image (set IMG=<image>:<tag>)
 make docker-push   # push container image (set IMG=<image>:<tag>)
 make docker-buildx # build and push multi-arch image via buildx (set IMG=; optionally PLATFORMS=)
+make dev-deploy    # build, push :dev tag to GHCR, and helm-upgrade the cluster (set DEV_IMG_TAG to override)
+```
+
+### Dev/Test Loop (without a release)
+
+Two options for iterating without triggering the release pipeline:
+
+| Method | When to use |
+|---|---|
+| `make run` | Run the controller process locally against `~/.kube/config` — no container build required |
+| `make dev-deploy` | Build, push a floating `:dev` tag to GHCR, and helm-upgrade the cluster with `pullPolicy: Always` — tests the full containerised path |
+
+```bash
+make dev-deploy                          # uses ghcr.io/mak3r/losant-device:dev
+make dev-deploy DEV_IMG_TAG=my-feature   # named tag when testing in parallel
+```
+
+The `:dev` tag is a floating tag — each push silently replaces the previous image. It is not used by any release target.
+
+### Container Tool
+
+All container build and push targets (`docker-build`, `docker-push`, `docker-buildx`, `dev-deploy`) use `$(CONTAINER_TOOL)` instead of a hardcoded `docker`. The default is `podman`. Override per-invocation if needed:
+
+```bash
+make docker-build CONTAINER_TOOL=docker
+make dev-deploy CONTAINER_TOOL=docker
 ```
 
 See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workflow rules.
