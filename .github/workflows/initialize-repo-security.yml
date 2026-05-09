@@ -1,0 +1,29 @@
+name: Initialize Repo Security
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Renew the 6-month interaction limit every 5 months (Jan, Jun, Nov)
+    - cron: '0 8 1 1,6,11 *'
+
+permissions:
+  administration: write
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set collaborators-only interaction limit
+        run: |
+          gh api --method PUT \
+            repos/${{ github.repository }}/interaction-limits \
+            --field limit=collaborators_only \
+            --field expiry=six_months
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Confirm
+        run: |
+          gh api repos/${{ github.repository }}/interaction-limits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
