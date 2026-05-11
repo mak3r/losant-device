@@ -138,12 +138,13 @@ func TestBootstrap_SecretIncomplete(t *testing.T) {
 	}
 }
 
-// TestBootstrap_SecretComplete verifies that Bootstrap is idempotent when all credentials exist.
+// TestBootstrap_SecretComplete verifies that Bootstrap is idempotent when all credentials exist
+// and DEVICE_ID matches the current clusterDeviceID.
 func TestBootstrap_SecretComplete(t *testing.T) {
 	complete := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: geaSecretName, Namespace: testNS},
 		Data: map[string][]byte{
-			"DEVICE_ID":     []byte("d"),
+			"DEVICE_ID":     []byte("device-789"),
 			"ACCESS_KEY":    []byte("k"),
 			"ACCESS_SECRET": []byte("s"),
 		},
@@ -161,6 +162,47 @@ func TestBootstrap_SecretComplete(t *testing.T) {
 
 	if len(mc.CreateDeviceAccessKeyCalls) != 0 {
 		t.Errorf("expected 0 CreateDeviceAccessKey calls, got %d", len(mc.CreateDeviceAccessKeyCalls))
+	}
+}
+
+// TestBootstrap_SecretStaleDeviceID verifies that Bootstrap reprovisions when the Secret's
+// DEVICE_ID does not match the current clusterDeviceID (delete+recreate lifecycle regression).
+func TestBootstrap_SecretStaleDeviceID(t *testing.T) {
+	stale := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: geaSecretName, Namespace: testNS},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte("stale-device-id"),
+			"ACCESS_KEY":    []byte("old-key"),
+			"ACCESS_SECRET": []byte("old-secret"),
+		},
+	}
+
+	mc := losant.NewMockClient()
+	b := &provisioner.GEABootstrapper{
+		Client:       buildFakeClient(stale),
+		LosantClient: mc,
+	}
+
+	if err := b.Bootstrap(context.Background(), baseLS(), "device-789"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.CreateDeviceAccessKeyCalls) != 1 {
+		t.Errorf("expected 1 CreateDeviceAccessKey call, got %d", len(mc.CreateDeviceAccessKeyCalls))
+	}
+
+	var got corev1.Secret
+	if err := b.Client.Get(context.Background(), types.NamespacedName{Name: geaSecretName, Namespace: testNS}, &got); err != nil {
+		t.Fatalf("secret not found after reprovision: %v", err)
+	}
+	if string(got.Data["DEVICE_ID"]) != "device-789" {
+		t.Errorf("DEVICE_ID: got %q, want %q", string(got.Data["DEVICE_ID"]), "device-789")
+	}
+	if string(got.Data["ACCESS_KEY"]) != "mock-access-key" {
+		t.Errorf("ACCESS_KEY: got %q, want %q", string(got.Data["ACCESS_KEY"]), "mock-access-key")
+	}
+	if string(got.Data["ACCESS_SECRET"]) != "mock-access-secret" {
+		t.Errorf("ACCESS_SECRET: got %q, want %q", string(got.Data["ACCESS_SECRET"]), "mock-access-secret")
 	}
 }
 
@@ -231,6 +273,58 @@ func TestBootstrap_SecretUpdateFails(t *testing.T) {
 	err := b.Bootstrap(context.Background(), baseLS(), "device-x")
 	if !errors.Is(err, updateErr) {
 		t.Errorf("expected update error, got: %v", err)
+	}
+}
+
+// TestBootstrap_StaleDeviceID_TriggersDeploymentRestart verifies that when the Secret holds stale
+// credentials (DEVICE_ID ≠ clusterDeviceID) and a GEA DeploymentRef is configured, Bootstrap
+// reprovisions the credentials AND patches the Deployment with a restartedAt annotation.
+// This covers the delete+recreate lifecycle: stale MQTT credentials would cause the GEA pod to
+// stay connected to the wrong Losant device, so the deployment restart forces reconnection.
+func TestBootstrap_StaleDeviceID_TriggersDeploymentRestart(t *testing.T) {
+	stale := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: geaSecretName, Namespace: testNS},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte("old-cluster-id"),
+			"ACCESS_KEY":    []byte("old-key"),
+			"ACCESS_SECRET": []byte("old-secret"),
+		},
+	}
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-gea", Namespace: testNS},
+	}
+
+	mc := losant.NewMockClient()
+	b := &provisioner.GEABootstrapper{
+		Client:       buildFakeClient(stale, dep),
+		LosantClient: mc,
+	}
+
+	ls := baseLS()
+	ls.Spec.GEA.DeploymentRef = "losant-gea"
+
+	if err := b.Bootstrap(context.Background(), ls, "new-cluster-id"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.CreateDeviceAccessKeyCalls) != 1 {
+		t.Errorf("expected 1 CreateDeviceAccessKey call, got %d", len(mc.CreateDeviceAccessKeyCalls))
+	}
+
+	var gotSecret corev1.Secret
+	if err := b.Client.Get(context.Background(), types.NamespacedName{Name: geaSecretName, Namespace: testNS}, &gotSecret); err != nil {
+		t.Fatalf("secret not found after reprovision: %v", err)
+	}
+	if string(gotSecret.Data["DEVICE_ID"]) != "new-cluster-id" {
+		t.Errorf("DEVICE_ID: got %q, want %q", string(gotSecret.Data["DEVICE_ID"]), "new-cluster-id")
+	}
+
+	var gotDep appsv1.Deployment
+	if err := b.Client.Get(context.Background(), types.NamespacedName{Name: "losant-gea", Namespace: testNS}, &gotDep); err != nil {
+		t.Fatalf("deployment not found: %v", err)
+	}
+	if gotDep.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] == "" {
+		t.Errorf("expected restartedAt annotation on GEA deployment after stale-credential reprovision")
 	}
 }
 

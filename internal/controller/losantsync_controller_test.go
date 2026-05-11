@@ -889,6 +889,55 @@ func conditionAbsent(conds []metav1.Condition, condType string) bool {
 
 // --- ensureWorkflowDeployments ---
 
+// TestDeleteRecreate_NewDeviceIDReprovisionsGEA covers the delete+recreate lifecycle regression
+// described in issue #374: when a LosantSync CR is deleted and recreated, the cluster gets a new
+// Losant device ID.  The losant-gea-credentials Secret from the old CR still holds the stale
+// DEVICE_ID.  Bootstrap must detect the mismatch and call CreateDeviceAccessKey with the new ID
+// so the GEA pod reconnects to the correct Losant device.
+func TestDeleteRecreate_NewDeviceIDReprovisionsGEA(t *testing.T) {
+	// Simulate a losant-gea-credentials Secret left behind by the deleted CR.
+	staleGEACreds := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-gea-credentials", Namespace: "default"},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte("old-cluster-device-id"),
+			"ACCESS_KEY":    []byte("old-key"),
+			"ACCESS_SECRET": []byte("old-secret"),
+		},
+	}
+
+	// Recreated CR has no status conditions (GEABootstrapped is absent → Bootstrap runs).
+	ls := baseLS("recreated")
+	ml := losant.NewMockClient()
+	ml.EnsureClusterDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec) (string, error) {
+		return "new-cluster-device-id", nil
+	}
+
+	c := buildClient(ls, credsSecret(), staleGEACreds)
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	if len(ml.CreateDeviceAccessKeyCalls) != 1 {
+		t.Errorf("expected 1 CreateDeviceAccessKey call (stale DEVICE_ID must be reprovisioned), got %d",
+			len(ml.CreateDeviceAccessKeyCalls))
+	}
+	call := ml.CreateDeviceAccessKeyCalls[0]
+	if call.DeviceID != "new-cluster-device-id" {
+		t.Errorf("CreateDeviceAccessKey DeviceID: got %q, want %q", call.DeviceID, "new-cluster-device-id")
+	}
+
+	var got corev1.Secret
+	if err := c.Get(context.Background(),
+		types.NamespacedName{Name: "losant-gea-credentials", Namespace: "default"}, &got); err != nil {
+		t.Fatalf("losant-gea-credentials not found after reprovision: %v", err)
+	}
+	if string(got.Data["DEVICE_ID"]) != "new-cluster-device-id" {
+		t.Errorf("DEVICE_ID in Secret: got %q, want %q", string(got.Data["DEVICE_ID"]), "new-cluster-device-id")
+	}
+}
+
 // TestWorkflowDeployments_EmptySpec verifies that when spec.WorkflowDeployments is
 // empty the reconciler does not set any WorkflowDeployed condition and still reaches Active.
 func TestWorkflowDeployments_EmptySpec(t *testing.T) {
