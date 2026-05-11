@@ -82,7 +82,8 @@ func (b *GEABootstrapper) Bootstrap(ctx context.Context, ls *losantv1alpha1.Losa
 	switch {
 	case getErr == nil:
 		d := existing.Data
-		if len(d["DEVICE_ID"]) > 0 && len(d["ACCESS_KEY"]) > 0 && len(d["ACCESS_SECRET"]) > 0 {
+		if len(d["DEVICE_ID"]) > 0 && len(d["ACCESS_KEY"]) > 0 && len(d["ACCESS_SECRET"]) > 0 &&
+			string(d["DEVICE_ID"]) == clusterDeviceID {
 			return nil
 		}
 	case errors.IsNotFound(getErr):
