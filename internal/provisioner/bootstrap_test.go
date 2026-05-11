@@ -276,6 +276,58 @@ func TestBootstrap_SecretUpdateFails(t *testing.T) {
 	}
 }
 
+// TestBootstrap_StaleDeviceID_TriggersDeploymentRestart verifies that when the Secret holds stale
+// credentials (DEVICE_ID ≠ clusterDeviceID) and a GEA DeploymentRef is configured, Bootstrap
+// reprovisions the credentials AND patches the Deployment with a restartedAt annotation.
+// This covers the delete+recreate lifecycle: stale MQTT credentials would cause the GEA pod to
+// stay connected to the wrong Losant device, so the deployment restart forces reconnection.
+func TestBootstrap_StaleDeviceID_TriggersDeploymentRestart(t *testing.T) {
+	stale := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: geaSecretName, Namespace: testNS},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte("old-cluster-id"),
+			"ACCESS_KEY":    []byte("old-key"),
+			"ACCESS_SECRET": []byte("old-secret"),
+		},
+	}
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-gea", Namespace: testNS},
+	}
+
+	mc := losant.NewMockClient()
+	b := &provisioner.GEABootstrapper{
+		Client:       buildFakeClient(stale, dep),
+		LosantClient: mc,
+	}
+
+	ls := baseLS()
+	ls.Spec.GEA.DeploymentRef = "losant-gea"
+
+	if err := b.Bootstrap(context.Background(), ls, "new-cluster-id"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mc.CreateDeviceAccessKeyCalls) != 1 {
+		t.Errorf("expected 1 CreateDeviceAccessKey call, got %d", len(mc.CreateDeviceAccessKeyCalls))
+	}
+
+	var gotSecret corev1.Secret
+	if err := b.Client.Get(context.Background(), types.NamespacedName{Name: geaSecretName, Namespace: testNS}, &gotSecret); err != nil {
+		t.Fatalf("secret not found after reprovision: %v", err)
+	}
+	if string(gotSecret.Data["DEVICE_ID"]) != "new-cluster-id" {
+		t.Errorf("DEVICE_ID: got %q, want %q", string(gotSecret.Data["DEVICE_ID"]), "new-cluster-id")
+	}
+
+	var gotDep appsv1.Deployment
+	if err := b.Client.Get(context.Background(), types.NamespacedName{Name: "losant-gea", Namespace: testNS}, &gotDep); err != nil {
+		t.Fatalf("deployment not found: %v", err)
+	}
+	if gotDep.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] == "" {
+		t.Errorf("expected restartedAt annotation on GEA deployment after stale-credential reprovision")
+	}
+}
+
 // TestBootstrap_DeploymentRestart verifies the GEA Deployment is patched with the restartedAt annotation.
 func TestBootstrap_DeploymentRestart(t *testing.T) {
 	dep := &appsv1.Deployment{
