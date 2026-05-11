@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/component: gea
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: losant-gea
