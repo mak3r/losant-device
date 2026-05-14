@@ -71,20 +71,30 @@ type GEABootstrapper struct {
 	LosantClient losant.LosantClient
 }
 
-// Bootstrap writes the losant-gea-credentials Secret if it is absent or incomplete.
-// It is idempotent: a Secret that already contains DEVICE_ID, ACCESS_KEY, and
-// ACCESS_SECRET causes an immediate return with no API calls.
+// Bootstrap writes the losant-gea-credentials Secret if it is absent or incomplete,
+// then restarts the GEA Deployment so it picks up the (potentially new) credentials.
+//
+// Credential write is idempotent: if the Secret already contains non-empty DEVICE_ID,
+// ACCESS_KEY, and ACCESS_SECRET where DEVICE_ID matches clusterDeviceID, no Losant API
+// call is made and no Secret update is performed.
+//
+// The Deployment restart is NOT skipped even when credentials are already current.
+// The controller only calls Bootstrap when GEABootstrapped≠True (i.e. on a fresh or
+// recreated CR), so a restart here is always warranted: the GEA pod may be holding
+// in-memory credentials from a previous LosantSync lifecycle that are now invalidated.
 func (b *GEABootstrapper) Bootstrap(ctx context.Context, ls *losantv1alpha1.LosantSync, clusterDeviceID string) error {
 	ns := ls.Spec.ProvisioningSecretRef.Namespace
 
 	var existing corev1.Secret
 	getErr := b.Client.Get(ctx, types.NamespacedName{Name: geaCredentialsSecretName, Namespace: ns}, &existing)
+
+	needsCredential := true
 	switch {
 	case getErr == nil:
 		d := existing.Data
 		if len(d["DEVICE_ID"]) > 0 && len(d["ACCESS_KEY"]) > 0 && len(d["ACCESS_SECRET"]) > 0 &&
 			string(d["DEVICE_ID"]) == clusterDeviceID {
-			return nil
+			needsCredential = false
 		}
 	case errors.IsNotFound(getErr):
 		// will create below
@@ -92,34 +102,36 @@ func (b *GEABootstrapper) Bootstrap(ctx context.Context, ls *losantv1alpha1.Losa
 		return fmt.Errorf("read %s/%s: %w", ns, geaCredentialsSecretName, getErr)
 	}
 
-	keyName := fmt.Sprintf("losant-device-controller-%s-%d", ls.Spec.ClusterName, time.Now().Unix())
-	_, key, secret, err := b.LosantClient.CreateDeviceAccessKey(ctx, ls.Spec.ApplicationID, clusterDeviceID, keyName)
-	if err != nil {
-		return fmt.Errorf("create device access key: %w", err)
-	}
-
-	data := map[string][]byte{
-		"DEVICE_ID":     []byte(clusterDeviceID),
-		"ACCESS_KEY":    []byte(key),
-		"ACCESS_SECRET": []byte(secret),
-	}
-
-	if errors.IsNotFound(getErr) {
-		cred := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      geaCredentialsSecretName,
-				Namespace: ns,
-			},
-			Data: data,
+	if needsCredential {
+		keyName := fmt.Sprintf("losant-device-controller-%s-%d", ls.Spec.ClusterName, time.Now().Unix())
+		_, key, secret, err := b.LosantClient.CreateDeviceAccessKey(ctx, ls.Spec.ApplicationID, clusterDeviceID, keyName)
+		if err != nil {
+			return fmt.Errorf("create device access key: %w", err)
 		}
-		if err := b.Client.Create(ctx, cred); err != nil {
-			return fmt.Errorf("create %s/%s: %w", ns, geaCredentialsSecretName, err)
+
+		data := map[string][]byte{
+			"DEVICE_ID":     []byte(clusterDeviceID),
+			"ACCESS_KEY":    []byte(key),
+			"ACCESS_SECRET": []byte(secret),
 		}
-	} else {
-		patched := existing.DeepCopy()
-		patched.Data = data
-		if err := b.Client.Update(ctx, patched); err != nil {
-			return fmt.Errorf("update %s/%s: %w", ns, geaCredentialsSecretName, err)
+
+		if errors.IsNotFound(getErr) {
+			cred := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      geaCredentialsSecretName,
+					Namespace: ns,
+				},
+				Data: data,
+			}
+			if err := b.Client.Create(ctx, cred); err != nil {
+				return fmt.Errorf("create %s/%s: %w", ns, geaCredentialsSecretName, err)
+			}
+		} else {
+			patched := existing.DeepCopy()
+			patched.Data = data
+			if err := b.Client.Update(ctx, patched); err != nil {
+				return fmt.Errorf("update %s/%s: %w", ns, geaCredentialsSecretName, err)
+			}
 		}
 	}
 
