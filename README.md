@@ -61,6 +61,18 @@ Devices are tagged with `cluster_name`, `region`, `health_status`, and `rancher_
 
 All three fields are optional and unvalidated. They appear on the cluster (Edge Compute) device only — not on node (peripheral) devices.
 
+## Health Score
+
+Every cluster and node is assigned a **health score** from 0 to 100, derived from live Kubernetes state — node conditions, crashlooping pods, failed pods, Warning events, CoreDNS availability, and PVC binding status. The score is reported to Losant as a numeric data field and mapped to a `health_status` tag:
+
+| Score | Status |
+|---|---|
+| 80 – 100 | `healthy` |
+| 50 – 79 | `degraded` |
+| 0 – 49 | `critical` |
+
+See [docs/calculating-health.md](docs/calculating-health.md) for the full deduction table, score thresholds, and `kubectl` commands to diagnose a lower-than-expected score.
+
 ## Quick Start
 
 > **Which branch to use**: `main` contains stable tagged releases only. All bug fixes and in-progress work land in `develop` first. If you are doing usability testing or want the latest fixes, check out `develop` before building:
@@ -162,6 +174,7 @@ See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workfl
 
 - [Setup Guide](docs/setup/README.md) — sequenced setup: Losant device → cluster deployment → workflow → operator config
 - [Architecture](docs/architecture.md) — system design, device model, controller internals
+- [Health Score](docs/calculating-health.md) — deduction table, status thresholds, and kubectl debugging commands
 - [Helm Values](helm/README.md) — full reference for all Helm chart values
 - [Agent Workflow](docs/agent-workflow.md) — multi-agent branch strategy and persona rules
 - [Runbook](docs/runbook.md) — operational procedures: deploy, diagnose, schedule changes, e2e suite
