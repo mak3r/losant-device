@@ -56,6 +56,11 @@ const (
 	rancherConditionAPIReachable = "RancherAPIReachable"
 )
 
+// +kubebuilder:rbac:groups=losant.io,resources=ranchersessions,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=losant.io,resources=ranchersessions/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;create;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
+
 // RancherSessionReconciler reconciles RancherSession objects.
 type RancherSessionReconciler struct {
 	client.Client
