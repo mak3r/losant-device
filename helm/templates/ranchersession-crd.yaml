@@ -1,0 +1,192 @@
+{{- if .Values.rancher.enabled }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.4
+    helm.sh/resource-policy: keep
+  name: ranchersessions.losant.io
+  labels:
+    {{- include "losant-device.labels" . | nindent 4 }}
+spec:
+  group: losant.io
+  names:
+    kind: RancherSession
+    listKind: RancherSessionList
+    plural: ranchersessions
+    singular: ranchersession
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.rancherClusterID
+      name: Cluster ID
+      type: string
+    - jsonPath: .status.connectedAt
+      name: Connected
+      type: date
+    - jsonPath: .status.expiresAt
+      name: Expires
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          RancherSession is the Schema for the ranchersessions API.
+          It represents a single dynamic connect/disconnect lifecycle against a Rancher Manager instance.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RancherSessionSpec defines the desired state of RancherSession.
+            properties:
+              clusterDisplayName:
+                description: |-
+                  ClusterDisplayName is the human-readable name of the downstream Rancher cluster.
+                  Defaults to the CR name when omitted.
+                type: string
+              credentialsSecretRef:
+                description: |-
+                  CredentialsSecretRef references the Secret containing the Rancher API token
+                  and endpoint URL.
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              suspend:
+                default: false
+                description: Suspend disables all reconciliation when true.
+                type: boolean
+              ttlSeconds:
+                default: 3600
+                description: |-
+                  TTLSeconds is how long the Rancher registration session remains active before
+                  the controller disconnects and removes the cluster entry.
+                format: int64
+                type: integer
+            required:
+            - credentialsSecretRef
+            type: object
+          status:
+            description: RancherSessionStatus defines the observed state of RancherSession.
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of the resource's state.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              connectedAt:
+                description: ConnectedAt is the timestamp when the session reached
+                  the Connected phase.
+                format: date-time
+                type: string
+              expiresAt:
+                description: ExpiresAt is the timestamp when the TTL expires and the
+                  controller will disconnect.
+                format: date-time
+                type: string
+              lastTransitionMessage:
+                description: LastTransitionMessage is a human-readable message describing
+                  the last phase transition.
+                type: string
+              manifestApplied:
+                description: |-
+                  ManifestApplied indicates whether the Rancher import manifest has been applied
+                  to the downstream cluster.
+                type: boolean
+              phase:
+                description: Phase is the current lifecycle phase of this resource.
+                type: string
+              rancherClusterID:
+                description: |-
+                  RancherClusterID is the ID assigned by Rancher Manager to the downstream cluster
+                  after a successful CreateCluster call.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}
