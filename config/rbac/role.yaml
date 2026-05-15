@@ -17,6 +17,14 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
+  - ""
+  resources:
   - nodes
   - persistentvolumeclaims
   - pods
@@ -68,6 +76,25 @@ rules:
   - losant.io
   resources:
   - losantsyncs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - losant.io
+  resources:
+  - ranchersessions
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - losant.io
+  resources:
+  - ranchersessions/status
   verbs:
   - get
   - patch
