@@ -86,6 +86,7 @@ rules:
   - ranchersessions
   verbs:
   - create
+  - delete
   - get
   - list
   - patch

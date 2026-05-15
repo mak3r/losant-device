@@ -52,7 +52,7 @@ The following `// +kubebuilder:rbac` markers are security-approved. The develope
 Copy these markers verbatim into the `RancherSessionReconciler` source file:
 
 ```go
-// +kubebuilder:rbac:groups=losant.io,resources=ranchersessions,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=losant.io,resources=ranchersessions,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=losant.io,resources=ranchersessions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;create;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
@@ -62,11 +62,11 @@ Copy these markers verbatim into the `RancherSessionReconciler` source file:
 
 | Resource | Verbs | Reason |
 |---|---|---|
-| `ranchersessions` | `get,list,watch,create,update,patch` | Reconciler owns the CRD lifecycle |
+| `ranchersessions` | `get,list,watch,create,update,patch,delete` | Reconciler owns the CRD lifecycle; trigger server calls Delete on disconnect (issue #412) |
 | `ranchersessions/status` | `get,update,patch` | Standard status subresource pattern |
 | `namespaces` | `get,create,delete` | Clean up `cattle-system` namespace on disconnect |
 | `secrets` | `get` | Read `rancher-credentials` in `losant-system`; existing role already grants this |
 
 The `secrets` marker restates the existing baseline permission (`get` is already in `role.yaml`). It is included here so the reconciler file documents its own dependencies explicitly. `make manifests` will not widen the role because the verb is already present in the committed baseline.
 
-`delete` on `ranchersessions` is intentionally omitted. The reconciler updates status and lets the CR owner (a human or higher-level controller) control object lifecycle. If delete is needed in a future phase, open a `type/security` issue.
+`delete` on `ranchersessions` is approved for the trigger receiver server, which is the designated CR owner controlling the RancherSession lifecycle on behalf of the GEA (see issue #412).
