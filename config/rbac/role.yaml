@@ -76,6 +76,7 @@ rules:
   - losant.io
   resources:
   - losantsyncs/status
+  - ranchersessions/status
   verbs:
   - get
   - patch
@@ -92,11 +93,3 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - losant.io
-  resources:
-  - ranchersessions/status
-  verbs:
-  - get
-  - patch
-  - update
