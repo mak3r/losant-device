@@ -57,7 +57,7 @@ gh issue list \
   --label "persona/<persona-name>" \
   --json number,title,labels,updatedAt \
   --limit 25 \
-  --jq '.[] | "#\(.number)  \(.title)  \([.labels[].name] | join(","))  [updated \(.updatedAt[:10])]"'
+  --jq '.[] | select(.labels | map(.name) | contains(["type/freeze"]) | not) | "#\(.number)  \(.title)  \([.labels[].name] | join(","))  [updated \(.updatedAt[:10])]"'
 ```
 
 **Open PRs needing this persona's attention:**
@@ -85,11 +85,19 @@ gh issue list \
 >   )] | .[] | "#\(.number)  \(.title)  [\(.headRefName)]  review:\(.reviewDecision // "PENDING")  comments:\(.comments | length)"'
 > ```
 
-Print the results as a brief queue, then proceed to Step 3.
+**Linked PRs for issues in your queue** — after the issue scan, for each issue number found (up to 5), check for linked PRs:
+```bash
+gh issue view <n>  # look for a "Pull requests:" section in the plain-text output
+```
+If a linked PR is listed, add it to the queue. These linked PRs are part of your work even if they are on a branch not matching your persona's prefix.
+
+Print the combined issue + PR results as a brief queue, then proceed to Step 3.
 
 ---
 
 ## Step 3 — Pick the Highest-Priority Item
+
+**Skip any issue labeled `type/freeze`** — frozen issues are off-limits for all personas. If one appears in your scored list (e.g., via a PR association), skip it and move to the next item.
 
 **If persona is `merge-manager`**, use this priority order:
 
@@ -126,8 +134,8 @@ Do not announce the item and wait. Fetch details and begin immediately.
 For the selected item:
 
 1. **Fetch full details:**
-   - Issue: `gh issue view <n>`
-   - PR: `gh pr view <n> --comments`
+   - Issue: `gh issue view <n>` — scan the output for a "Pull requests:" section. If a linked PR appears, run `gh pr view <linked-pr-n> --comments` and treat that PR's branch as your working branch. Do not create a new branch or PR when an existing one already covers this issue.
+   - PR (if picked directly): `gh pr view <n> --comments`
 
 2. **Understand what's needed.** Read only the files required to complete the task — no broad codebase exploration.
 
@@ -201,4 +209,4 @@ After completing an item (or finding an empty queue):
 2. `--jq` on every list call — only formatted strings reach context, not raw JSON.
 3. Read only files needed for the current task — no broad codebase exploration.
 4. Never quote issue or PR body verbatim unless it is directly relevant to a code decision.
-5. One issue-list call and one PR-list call per scan cycle.
+5. One issue-list call and one PR-list call per scan cycle, plus up to 5 `gh issue view` calls to discover linked PRs — no other exploration.
