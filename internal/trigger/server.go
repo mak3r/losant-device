@@ -153,10 +153,6 @@ func (s *Server) handleConnect(w http.ResponseWriter, _ *http.Request, ctx conte
 
 // handleDisconnect deletes the RancherSession CR named after the LosantSync CR.
 // Returns 202 on success, 404 if the CR does not exist.
-//
-// NOTE: the delete verb on ranchersessions is not yet security-approved (see
-// docs/rancher-rbac.md on persona/security). This handler will receive a 403
-// from the k8s API until a type/security issue is opened and approved.
 func (s *Server) handleDisconnect(w http.ResponseWriter, _ *http.Request, ctx context.Context, name string) {
 	rs := &losantv1alpha1.RancherSession{}
 	if err := s.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: s.Namespace}, rs); err != nil {
