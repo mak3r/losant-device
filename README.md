@@ -10,6 +10,7 @@ Remote Kubernetes clusters — especially k3s deployments at edge locations — 
 - **Cluster drill-down**: per-node metrics filtered by cluster or region
 - **Node detail**: time-series CPU, memory, pod health, and condition flags
 - **Rancher Manager link**: one click from any cluster view to the management UI
+- **Rancher dynamic connect/disconnect**: register and deregister clusters from Rancher Manager on demand, via Losant dashboard buttons or cloud workflows — without touching the cluster directly
 
 The operator runs inside each cluster and reports metrics to Losant on a configurable schedule (cron or interval), with resilience to intermittent network connectivity via the Losant Gateway Edge Agent (GEA).
 

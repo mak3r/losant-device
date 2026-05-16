@@ -164,6 +164,22 @@ If the actual score is 72 rather than 83, there are additional active factors no
 
 ---
 
+## Debug Tools
+
+Run `scripts/health-score.sh [NAMESPACE]` to print each deduction factor and compute the expected cluster health score without deploying additional tooling. Requires `kubectl` and `awk`.
+
+```bash
+# Default namespace: losant-system
+scripts/health-score.sh
+
+# Specify a namespace if your controller runs elsewhere
+scripts/health-score.sh my-namespace
+```
+
+The script mirrors the deduction algorithm in `internal/monitor/health_score.go` exactly, so the score it prints should match what the controller reports to Losant.
+
+---
+
 ## Score vs. Status: Not a Simple Equivalence
 
 Two clusters at score 75 can have very different operational urgency:

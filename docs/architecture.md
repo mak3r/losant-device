@@ -39,6 +39,44 @@ The Losant Gateway Edge Agent (`losant/edge-agent`) runs as a Deployment inside 
 └─────────────────────────────────────────────┘
 ```
 
+## Rancher Dynamic Connect/Disconnect
+
+The optional Rancher integration adds a second communication path to the controller: on-demand registration and deregistration of the edge cluster with a Rancher Manager instance, triggered via Losant device commands.
+
+```
+Losant cloud workflow
+  │  device command  { "action": "connect"|"disconnect", "ttlSeconds": N }
+  ▼
+GEA edge workflow (runs on cluster GEA pod)
+  │  HTTP POST  losant-device-trigger:9090/rancher
+  ▼
+Trigger receiver (port 9090, inside controller pod)
+  │  create / delete RancherSession CR
+  ▼
+RancherSessionReconciler
+  │  POST /v3/clusters  (create)  or  DELETE /v3/clusters/{id}  (disconnect)
+  ▼
+Rancher Manager  ←──────────────────────────────┐
+  │  returns import manifest URL                 │
+  ▼                                              │
+RancherSessionReconciler                         │
+  │  applies Rancher import manifest             │
+  ▼                                              │
+cattle-cluster-agent (cattle-system namespace) ──┘
+  registers cluster upstream
+```
+
+**Session lifecycle phases:** `Connecting` → `Connected` → `Disconnecting` → `Disconnected` (or `Failed` on error)
+
+**Disconnect paths (all produce the same cleanup):**
+1. Losant `disconnect` command → trigger server deletes `RancherSession` CR → reconciler finalizer removes Rancher cluster record and `cattle-system` namespace
+2. Rancher UI cluster deletion → reconciler detects 404 on next `GetCluster` poll → auto-cleans
+3. TTL expiry (`status.expiresAt`) → reconciler runs cleanup automatically
+
+The `rancher-credentials` Secret in `losant-system` provides `RANCHER_URL`, `RANCHER_TOKEN`, and `RANCHER_CA` to the controller. The trigger receiver Service (`losant-device-trigger`, ClusterIP port 9090) is only created when `rancher.enabled=true` in Helm values.
+
+See [docs/rancher-integration.md](rancher-integration.md) for the full operator guide.
+
 ## Losant Device Model
 
 Each k3s cluster maps to a set of Losant devices:
