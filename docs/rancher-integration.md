@@ -74,9 +74,11 @@ Generate an API token for that user in **Rancher UI → User Settings → API Ke
 
 > **Scope note:** This token is shared across all edge clusters managed by the controller. Per-cluster tokens are a future hardening option.
 
-### 2. Obtain the Rancher CA certificate
+### 2. Obtain the Rancher CA certificate (private CAs only)
 
-The controller validates TLS against Rancher Manager's CA. Export the CA PEM from your Rancher deployment:
+> **Note:** Skip this step if your Rancher Manager endpoint is signed by a publicly-trusted CA (e.g., AWS ACM, Let's Encrypt). The controller uses the system certificate pool automatically. Supply `RANCHER_CA` only when using a private or self-signed CA.
+
+**From the Rancher cluster secret:**
 
 ```bash
 kubectl get secret tls-rancher-internal-ca \
@@ -87,27 +89,15 @@ kubectl get secret tls-rancher-internal-ca \
 
 Adjust the secret name to match your Rancher installation.
 
-### 3. Create the `rancher-credentials` Secret
-
-Create the Secret in `losant-system` on the **edge cluster** (the cluster managed by the controller):
+**From the TLS endpoint (when cluster access is unavailable):**
 
 ```bash
-kubectl create secret generic rancher-credentials \
-  --namespace losant-system \
-  --from-literal=RANCHER_URL=https://rancher.example.com \
-  --from-literal=RANCHER_TOKEN=<token-from-step-1> \
-  --from-file=RANCHER_CA=rancher-ca.pem
+openssl s_client -connect <rancher-host>:443 -showcerts </dev/null 2>/dev/null \
+  | awk '/-----BEGIN CERTIFICATE-----/{c=""} {c=c"\n"$0} /-----END CERTIFICATE-----/{last=c} END{print last}' \
+  > rancher-ca.pem
 ```
 
-The controller reads exactly three keys:
-
-| Key | Value |
-|---|---|
-| `RANCHER_URL` | Base URL of your Rancher Manager instance |
-| `RANCHER_TOKEN` | Service account Bearer token from Step 1 |
-| `RANCHER_CA` | PEM-encoded CA certificate from Step 2 |
-
-### 4. Enable Rancher support in Helm
+### 3. Enable Rancher support in Helm
 
 The trigger receiver Service and RancherSession CRD are gated by `rancher.enabled`. Set this in your Helm values or upgrade command:
 
@@ -123,6 +113,31 @@ Verify the trigger Service exists after upgrade:
 ```bash
 kubectl get svc -n losant-system losant-device-trigger
 ```
+
+### 4. Create the `rancher-credentials` Secret
+
+Create or update the Secret in `losant-system` on the **edge cluster** using the dry-run/apply pattern, which handles both first-time creation and updates (Helm creates an empty `rancher-credentials` shell when `rancher.enabled=true`):
+
+```bash
+kubectl create secret generic rancher-credentials \
+  --namespace losant-system \
+  --from-literal=RANCHER_URL=https://rancher.example.com \
+  --from-literal=RANCHER_TOKEN=<token-from-step-1> \
+  --from-file=RANCHER_CA=rancher-ca.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+If your Rancher endpoint uses a publicly-trusted CA (see Step 2), omit `--from-file=RANCHER_CA`.
+
+The controller reads the following keys:
+
+| Key | Required | Value |
+|---|---|---|
+| `RANCHER_URL` | Yes | Base URL of your Rancher Manager instance |
+| `RANCHER_TOKEN` | Yes | Service account Bearer token from Step 1 |
+| `RANCHER_CA` | No | PEM-encoded CA certificate (private/self-signed CAs only; see Step 2) |
+
+> *Omit `RANCHER_CA` when your Rancher endpoint uses a certificate signed by a public CA. Supply it only when using a private or self-signed CA.*
 
 ---
 
@@ -292,7 +307,7 @@ kubectl get ranchersession <name> -n losant-system \
 Check:
 1. `RANCHER_URL` in the `rancher-credentials` Secret is correct and reachable from the cluster
 2. `RANCHER_TOKEN` is valid and not expired
-3. `RANCHER_CA` matches the CA used by your Rancher Manager instance
+3. If using a private CA: `RANCHER_CA` in the Secret matches the CA used by your Rancher Manager instance. `RANCHER_CA` is optional — omit it when your Rancher endpoint is signed by a publicly-trusted CA (e.g., Let's Encrypt, ACM)
 4. Network policies or firewall rules do not block outbound HTTPS from `losant-system`
 
 Verify the Secret keys are populated:
