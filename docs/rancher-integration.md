@@ -147,7 +147,7 @@ The connect/disconnect path does not function without a Losant cloud workflow th
 
 ### Create the cloud workflow
 
-1. In **Losant UI → Application → Workflows → Add Workflow**, select **Cloud Workflow**.
+1. Navigate to your Losant Application, select **Workflows** in the left sidebar, click **Add Workflow**, and set the **Type** combo box to **Application**.
 2. Name it (e.g., `rancher-connect-disconnect`).
 3. Add a trigger node — **Virtual Button** (for manual use) or **Dashboard Button** (for dashboard-triggered operations).
 4. Add a **Device Command** node after the trigger:
@@ -188,7 +188,7 @@ The GEA edge workflow runs on the GEA pod inside the edge cluster. It receives t
 
 ### Create the edge workflow
 
-1. In **Losant UI → Application → Workflows → Add Workflow**, select **Edge Workflow**.
+1. Navigate to your Losant Application, select **Workflows** in the left sidebar, click **Add Workflow**, and set the **Type** combo box to **Edge**.
 2. Name it (e.g., `rancher-trigger`).
 3. Add a **Device Command** trigger node:
    - **Command Name**: `rancher`
