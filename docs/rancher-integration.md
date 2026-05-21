@@ -147,30 +147,31 @@ The connect/disconnect path does not function without a Losant cloud workflow th
 
 ### Create the cloud workflow
 
+> **Important:** Create a **single** cloud workflow containing **two** Virtual Button trigger nodes — one for connect and one for disconnect. Do not split these into separate workflows. A cluster that can be connected must always be disconnectable from the same workflow.
+
 1. Navigate to your Losant Application, select **Workflows** in the left sidebar, click **Add Workflow**, and set the **Type** combo box to **Application**.
 2. Name it (e.g., `rancher-connect-disconnect`).
-3. Add a trigger node — **Virtual Button** (for manual use) or **Dashboard Button** (for dashboard-triggered operations).
-4. Add a **Device Command** node after the trigger:
-   - **Device**: select the cluster's Edge Compute Losant device by name or via a context variable
-   - **Command Name**: `rancher`
-   - **Payload**: construct the payload from your trigger input:
+3. Add two independent trigger paths on the canvas:
 
-**Connect payload:**
-```json
-{
-  "action": "connect",
-  "ttlSeconds": 3600
-}
-```
+   **Connect path:**
+   - Add a **Virtual Button** trigger node, label it "Connect"
+   - Add a **Device Command** node after it:
+     - **Device**: select the cluster's Edge Compute Losant device
+     - **Command Name**: `rancher`
+     - **Payload** (hardcoded):
+       ```json
+       { "action": "connect", "ttlSeconds": 3600 }
+       ```
 
-**Disconnect payload:**
-```json
-{
-  "action": "disconnect"
-}
-```
+   **Disconnect path:**
+   - Add a second **Virtual Button** trigger node, label it "Disconnect"
+   - Add a separate **Device Command** node after it (same device, same command name):
+     - **Payload** (hardcoded):
+       ```json
+       { "action": "disconnect" }
+       ```
 
-5. Save and deploy the workflow.
+4. Save and deploy the workflow.
 
 ### Verify command delivery
 
