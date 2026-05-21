@@ -201,11 +201,15 @@ The GEA edge workflow runs on the GEA pod inside the edge cluster. It receives t
 
 ### Deploy the edge workflow
 
+> **Note:** The rancher-trigger is a second, separate edge workflow — distinct from the health-monitoring edge workflow you deployed during the main setup guide. Add it as an additional entry in `spec.workflowDeployments`; do not replace the existing entry.
+
 Add the workflow to your `LosantSync` CR under `spec.workflowDeployments`:
 
 ```yaml
 spec:
   workflowDeployments:
+    - flowId: "<existing-health-monitoring-workflow-id>"
+      version: "<existing-version>"
     - flowId: "<rancher-trigger-workflow-id>"
       version: "v1.0.0"
 ```
