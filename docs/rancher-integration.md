@@ -173,6 +173,29 @@ The connect/disconnect path does not function without a Losant cloud workflow th
 
 4. Save and deploy the workflow.
 
+### Device targeting
+
+The Device Command node supports three targeting patterns depending on your use case.
+
+**Pattern 1 — Virtual Button (testing / single cluster)**
+
+Configure each Virtual Button's output payload to include the device ID, then set the Device Command node to **"Device id(s) specified on the current payload"** with path `data.deviceId`:
+
+```json
+{ "deviceId": "<cluster-device-id>", "action": "connect", "ttlSeconds": 3600 }
+```
+
+**Pattern 2 — Dashboard Button (on-demand, any cluster)**
+
+1. In your Losant Dashboard, create a **Device context variable** (e.g., `cluster`) so the operator selects the target edge compute device before clicking the button.
+2. The Dashboard Button passes the selected device into the workflow payload automatically.
+3. Set the Device Command node to **"Device id(s) specified on the current payload"** and use the context path visible in the workflow debug tab after the first trigger.
+4. A single dashboard button with this pattern can connect or disconnect any registered cluster without modifying the workflow.
+
+**Pattern 3 — Automated trigger (health-score-based)**
+
+Use a **Device State** trigger (or equivalent) configured to fire when `health_score` meets a threshold. The triggering device's ID is already on the trigger payload — no manual input is required. Set the Device Command node to **"Device id(s) specified on the current payload"** and wire it directly.
+
 ### Verify command delivery
 
 After triggering the workflow, confirm the command reached the device:
