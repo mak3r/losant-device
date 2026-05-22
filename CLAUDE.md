@@ -22,7 +22,104 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 | **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, `.claude/commands/**`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 | **product-designer** | `persona/product-designer` | `.claude/plans/**`, GitHub Issues (create only), `docs/architecture.md` (joint with docs) |
-| **triage** | — (no commits) | Creates GitHub issues only; conducts human intake interview |
+| **triage** | — (no commits) | Creates GitHub issues only; evaluates whether a reported issue is valid by code analysis and human intake interview |
+
+## Worktree Setup (Required Before Starting Work)
+
+Each persona works in an isolated git worktree so multiple personas can be active simultaneously without branch conflicts. **Never do persona work directly in the main clone.**
+
+### Which personas need a worktree
+
+| Persona | Worktree | Notes |
+|---|---|---|
+| **developer** | `development/` | Persistent — start Claude here; create feature branches within the session |
+| **test-engineer** | `development/` | Same persistent worktree as developer — start a separate Claude session from the same directory |
+| **security** | `security/` | Persistent — one branch for all security work |
+| **qa** | `qa/` | Persistent — one branch for all QA work |
+| **gitops-manager** | `gitops-manager/` | Persistent — one branch for all infra/pipeline work |
+| **docs** | `docs/` | Persistent — one branch for all documentation work |
+| **product-designer** | `product-designer/` | Persistent — plans and issue creation only |
+| **merge-manager** | *(none)* | Works from the main clone; never commits |
+| **triage** | *(none)* | Works from the main clone; never commits |
+
+### Directory layout
+
+```
+~/projects/
+├── losant-device/                    ← main clone (trunk/develop, merge-manager, triage)
+└── losant-device-worktrees/
+    ├── security/                     ← persona/security
+    ├── gitops-manager/               ← persona/gitops-manager
+    ├── docs/                         ← persona/docs
+    ├── qa/                           ← persona/qa
+    ├── product-designer/             ← persona/product-designer
+    └── development/                  ← developer + test-engineer (feature branches switched within)
+```
+
+### Starting a Claude session for a persona
+
+Open a terminal in the persona's worktree directory and start Claude there:
+
+```bash
+cd ~/projects/losant-device-worktrees/security
+claude
+```
+
+The Claude session's working directory determines which persona context is active.
+
+### Starting a developer or test-engineer session
+
+Both the developer and test-engineer always work from the persistent `development/` worktree. No new worktree is created per feature — instead, branch within the same session:
+
+```bash
+cd ~/projects/losant-device-worktrees/development
+claude
+```
+
+Once inside the Claude session, pick up a feature issue by creating a branch from current `develop`:
+
+```bash
+git fetch origin
+git checkout -b feature/developer/<feature-name> origin/develop
+# e.g. git checkout -b feature/developer/rancher-session origin/develop
+```
+
+To move on to the next feature after merging, switch branches again in the same session:
+
+```bash
+git fetch origin
+git checkout -b feature/developer/<next-feature> origin/develop
+```
+
+The test-engineer starts their own separate Claude session from the same `development/` directory and checks out the same feature branch:
+
+```bash
+# In a new terminal:
+cd ~/projects/losant-device-worktrees/development
+claude
+# Then inside Claude: git checkout feature/developer/<feature-name>
+```
+
+Both personas push to `feature/developer/<name>` — a single PR contains both implementation and tests.
+
+### Resuming work on a persona branch after a restart
+
+If a worktree directory was removed but the branch still exists:
+
+```bash
+git worktree add ../losant-device-worktrees/<persona> <branch-name>
+# e.g. git worktree add ../losant-device-worktrees/security persona/security
+```
+
+### Removing a worktree after a branch is merged
+
+```bash
+# From the main clone
+git worktree remove ../losant-device-worktrees/<persona>
+# The branch is deleted by the merge-manager after the PR merges
+```
+
+All persona worktrees — including `development/` — are persistent and stay for the life of the project. Do not remove them after a PR merges; just switch to the next feature branch within the same worktree.
 
 ### Hard Rules
 
@@ -67,12 +164,13 @@ To invoke: ask Claude to "act as product-designer" or check out `persona/product
 The triage agent is an intake specialist, not an implementer. When invoked it:
 
 1. Conducts an interactive conversation to fully understand the issue being reported
-2. Asks clarifying questions until it has sufficient information to produce a complete report
-3. Determines the correct persona(s), phase, and type for each issue
-4. Presents a draft of every issue to the human for confirmation before creating anything
-5. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
-6. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `bug` AND `persona/test-engineer` + `type/task`)
-7. Never commits code, never modifies any file, never creates `.claude/plans/` documents
+2. Evaluates the detail provided against docs and code in order to validate that it is in fact an issue
+3. Asks clarifying questions until it has sufficient information to produce a valid and complete report
+4. Determines the correct persona(s), phase, and type for each issue
+5. Presents a draft of every issue to the human for confirmation before creating anything
+6. Creates GitHub issues with correct `persona/<name>`, `phase/<n>`, and one of `bug`, `type/task`, `type/security` labels
+7. Creates multiple issues when a single incident spans multiple personas (e.g., a crash needs `persona/developer` + `bug` AND `persona/test-engineer` + `type/task`)
+8. Never commits code, never modifies any file, never creates `.claude/plans/` documents
 
 To invoke: run the `/triage` Claude Code skill.
 
@@ -230,3 +328,7 @@ When creating issues, always apply:
 The merge manager uses these labels to route notifications and gate PRs.
 
 The triage agent does not apply a `persona/triage` label. It creates issues for other personas — it never owns an issue itself.
+
+### Frozen Issues
+
+The `type/freeze` label marks an issue that is paused or under review. **No agent may work on, comment on, or otherwise act on any issue labeled `type/freeze`.** If an issue appears in your queue with this label, skip it and move to the next item. Do not re-label, close, or modify frozen issues.
