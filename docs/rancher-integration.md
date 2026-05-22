@@ -74,9 +74,11 @@ Generate an API token for that user in **Rancher UI → User Settings → API Ke
 
 > **Scope note:** This token is shared across all edge clusters managed by the controller. Per-cluster tokens are a future hardening option.
 
-### 2. Obtain the Rancher CA certificate
+### 2. Obtain the Rancher CA certificate (private CAs only)
 
-The controller validates TLS against Rancher Manager's CA. Export the CA PEM from your Rancher deployment:
+> **Note:** Skip this step if your Rancher Manager endpoint is signed by a publicly-trusted CA (e.g., AWS ACM, Let's Encrypt). The controller uses the system certificate pool automatically. Supply `RANCHER_CA` only when using a private or self-signed CA.
+
+**From the Rancher cluster secret:**
 
 ```bash
 kubectl get secret tls-rancher-internal-ca \
@@ -87,27 +89,15 @@ kubectl get secret tls-rancher-internal-ca \
 
 Adjust the secret name to match your Rancher installation.
 
-### 3. Create the `rancher-credentials` Secret
-
-Create the Secret in `losant-system` on the **edge cluster** (the cluster managed by the controller):
+**From the TLS endpoint (when cluster access is unavailable):**
 
 ```bash
-kubectl create secret generic rancher-credentials \
-  --namespace losant-system \
-  --from-literal=RANCHER_URL=https://rancher.example.com \
-  --from-literal=RANCHER_TOKEN=<token-from-step-1> \
-  --from-file=RANCHER_CA=rancher-ca.pem
+openssl s_client -connect <rancher-host>:443 -showcerts </dev/null 2>/dev/null \
+  | awk '/-----BEGIN CERTIFICATE-----/{c=""} {c=c"\n"$0} /-----END CERTIFICATE-----/{last=c} END{print last}' \
+  > rancher-ca.pem
 ```
 
-The controller reads exactly three keys:
-
-| Key | Value |
-|---|---|
-| `RANCHER_URL` | Base URL of your Rancher Manager instance |
-| `RANCHER_TOKEN` | Service account Bearer token from Step 1 |
-| `RANCHER_CA` | PEM-encoded CA certificate from Step 2 |
-
-### 4. Enable Rancher support in Helm
+### 3. Enable Rancher support in Helm
 
 The trigger receiver Service and RancherSession CRD are gated by `rancher.enabled`. Set this in your Helm values or upgrade command:
 
@@ -124,6 +114,31 @@ Verify the trigger Service exists after upgrade:
 kubectl get svc -n losant-system losant-device-trigger
 ```
 
+### 4. Create the `rancher-credentials` Secret
+
+Create or update the Secret in `losant-system` on the **edge cluster** using the dry-run/apply pattern, which handles both first-time creation and updates (Helm creates an empty `rancher-credentials` shell when `rancher.enabled=true`):
+
+```bash
+kubectl create secret generic rancher-credentials \
+  --namespace losant-system \
+  --from-literal=RANCHER_URL=https://rancher.example.com \
+  --from-literal=RANCHER_TOKEN=<token-from-step-1> \
+  --from-file=RANCHER_CA=rancher-ca.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+If your Rancher endpoint uses a publicly-trusted CA (see Step 2), omit `--from-file=RANCHER_CA`.
+
+The controller reads the following keys:
+
+| Key | Required | Value |
+|---|---|---|
+| `RANCHER_URL` | Yes | Base URL of your Rancher Manager instance |
+| `RANCHER_TOKEN` | Yes | Service account Bearer token from Step 1 |
+| `RANCHER_CA` | No | PEM-encoded CA certificate (private/self-signed CAs only; see Step 2) |
+
+> *Omit `RANCHER_CA` when your Rancher endpoint uses a certificate signed by a public CA. Supply it only when using a private or self-signed CA.*
+
 ---
 
 ## Creating the Losant Cloud Workflow (Required)
@@ -132,30 +147,54 @@ The connect/disconnect path does not function without a Losant cloud workflow th
 
 ### Create the cloud workflow
 
-1. In **Losant UI → Application → Workflows → Add Workflow**, select **Cloud Workflow**.
+> **Important:** Create a **single** cloud workflow containing **two** Virtual Button trigger nodes — one for connect and one for disconnect. Do not split these into separate workflows. A cluster that can be connected must always be disconnectable from the same workflow.
+
+1. Navigate to your Losant Application, select **Workflows** in the left sidebar, click **Add Workflow**, and set the **Type** combo box to **Application**.
 2. Name it (e.g., `rancher-connect-disconnect`).
-3. Add a trigger node — **Virtual Button** (for manual use) or **Dashboard Button** (for dashboard-triggered operations).
-4. Add a **Device Command** node after the trigger:
-   - **Device**: select the cluster's Edge Compute Losant device by name or via a context variable
-   - **Command Name**: `rancher`
-   - **Payload**: construct the payload from your trigger input:
+3. Add two independent trigger paths on the canvas:
 
-**Connect payload:**
+   **Connect path:**
+   - Add a **Virtual Button** trigger node, label it "Connect"
+   - Add a **Device Command** node after it:
+     - **Device**: select the cluster's Edge Compute Losant device
+     - **Command Name**: `rancher`
+     - **Payload** (hardcoded):
+       ```json
+       { "action": "connect", "ttlSeconds": 3600 }
+       ```
+
+   **Disconnect path:**
+   - Add a second **Virtual Button** trigger node, label it "Disconnect"
+   - Add a separate **Device Command** node after it (same device, same command name):
+     - **Payload** (hardcoded):
+       ```json
+       { "action": "disconnect" }
+       ```
+
+4. Save and deploy the workflow.
+
+### Device targeting
+
+The Device Command node supports three targeting patterns depending on your use case.
+
+**Pattern 1 — Virtual Button (testing / single cluster)**
+
+Configure each Virtual Button's output payload to include the device ID, then set the Device Command node to **"Device id(s) specified on the current payload"** with path `data.deviceId`:
+
 ```json
-{
-  "action": "connect",
-  "ttlSeconds": 3600
-}
+{ "deviceId": "<cluster-device-id>", "action": "connect", "ttlSeconds": 3600 }
 ```
 
-**Disconnect payload:**
-```json
-{
-  "action": "disconnect"
-}
-```
+**Pattern 2 — Dashboard Button (on-demand, any cluster)**
 
-5. Save and deploy the workflow.
+1. In your Losant Dashboard, create a **Device context variable** (e.g., `cluster`) so the operator selects the target edge compute device before clicking the button.
+2. The Dashboard Button passes the selected device into the workflow payload automatically.
+3. Set the Device Command node to **"Device id(s) specified on the current payload"** and use the context path visible in the workflow debug tab after the first trigger.
+4. A single dashboard button with this pattern can connect or disconnect any registered cluster without modifying the workflow.
+
+**Pattern 3 — Automated trigger (health-score-based)**
+
+Use a **Device State** trigger (or equivalent) configured to fire when `health_score` meets a threshold. The triggering device's ID is already on the trigger payload — no manual input is required. Set the Device Command node to **"Device id(s) specified on the current payload"** and wire it directly.
 
 ### Verify command delivery
 
@@ -173,7 +212,7 @@ The GEA edge workflow runs on the GEA pod inside the edge cluster. It receives t
 
 ### Create the edge workflow
 
-1. In **Losant UI → Application → Workflows → Add Workflow**, select **Edge Workflow**.
+1. Navigate to your Losant Application, select **Workflows** in the left sidebar, click **Add Workflow**, and set the **Type** combo box to **Edge**.
 2. Name it (e.g., `rancher-trigger`).
 3. Add a **Device Command** trigger node:
    - **Command Name**: `rancher`
@@ -186,11 +225,15 @@ The GEA edge workflow runs on the GEA pod inside the edge cluster. It receives t
 
 ### Deploy the edge workflow
 
+> **Note:** The rancher-trigger is a second, separate edge workflow — distinct from the health-monitoring edge workflow you deployed during the main setup guide. Add it as an additional entry in `spec.workflowDeployments`; do not replace the existing entry.
+
 Add the workflow to your `LosantSync` CR under `spec.workflowDeployments`:
 
 ```yaml
 spec:
   workflowDeployments:
+    - flowId: "<existing-health-monitoring-workflow-id>"
+      version: "<existing-version>"
     - flowId: "<rancher-trigger-workflow-id>"
       version: "v1.0.0"
 ```
@@ -292,7 +335,7 @@ kubectl get ranchersession <name> -n losant-system \
 Check:
 1. `RANCHER_URL` in the `rancher-credentials` Secret is correct and reachable from the cluster
 2. `RANCHER_TOKEN` is valid and not expired
-3. `RANCHER_CA` matches the CA used by your Rancher Manager instance
+3. If using a private CA: `RANCHER_CA` in the Secret matches the CA used by your Rancher Manager instance. `RANCHER_CA` is optional — omit it when your Rancher endpoint is signed by a publicly-trusted CA (e.g., Let's Encrypt, ACM)
 4. Network policies or firewall rules do not block outbound HTTPS from `losant-system`
 
 Verify the Secret keys are populated:
