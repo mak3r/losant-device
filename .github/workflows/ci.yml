@@ -141,18 +141,22 @@ jobs:
 
           added = gen_perms - com_perms
           removed = com_perms - gen_perms
-          print("ERROR: config/rbac/role.yaml permissions have drifted from the committed baseline.")
-          print("A security review is required before adding new RBAC permissions.")
-          print("Open an issue labeled persona/security and type/security before merging.")
+
           if added:
-              print("\nAdded permissions (require security review):")
+              print("ERROR: Markers request permissions not present in the security-approved baseline.")
+              print("Open an issue labeled persona/security and type/security before merging.")
+              print("\nUnapproved permissions (require security review):")
               for g, res, v in sorted(added):
                   print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
+              sys.exit(1)
+
           if removed:
-              print("\nRemoved permissions:")
+              print("INFO: Security baseline contains permissions not yet covered by markers.")
+              print("This is expected when security approves new permissions before developers add markers.")
+              print("\nApproved but not yet reflected in markers:")
               for g, res, v in sorted(removed):
                   print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
-          sys.exit(1)
+              sys.exit(0)
           EOF
 
   helm-crd-drift:

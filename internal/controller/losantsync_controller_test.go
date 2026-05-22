@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -888,6 +889,101 @@ func conditionAbsent(conds []metav1.Condition, condType string) bool {
 }
 
 // --- ensureWorkflowDeployments ---
+
+// TestDeleteRecreate_NewDeviceIDReprovisionsGEA covers the delete+recreate lifecycle regression
+// described in issue #374: when a LosantSync CR is deleted and recreated, the cluster gets a new
+// Losant device ID.  The losant-gea-credentials Secret from the old CR still holds the stale
+// DEVICE_ID.  Bootstrap must detect the mismatch and call CreateDeviceAccessKey with the new ID
+// so the GEA pod reconnects to the correct Losant device.
+func TestDeleteRecreate_NewDeviceIDReprovisionsGEA(t *testing.T) {
+	// Simulate a losant-gea-credentials Secret left behind by the deleted CR.
+	staleGEACreds := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-gea-credentials", Namespace: "default"},
+		Data: map[string][]byte{
+			"DEVICE_ID":     []byte("old-cluster-device-id"),
+			"ACCESS_KEY":    []byte("old-key"),
+			"ACCESS_SECRET": []byte("old-secret"),
+		},
+	}
+
+	// Recreated CR has no status conditions (GEABootstrapped is absent → Bootstrap runs).
+	ls := baseLS("recreated")
+	ml := losant.NewMockClient()
+	ml.EnsureClusterDeviceFunc = func(_ context.Context, _ losantv1alpha1.LosantSyncSpec) (string, error) {
+		return "new-cluster-device-id", nil
+	}
+
+	c := buildClient(ls, credsSecret(), staleGEACreds)
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	if len(ml.CreateDeviceAccessKeyCalls) != 1 {
+		t.Errorf("expected 1 CreateDeviceAccessKey call (stale DEVICE_ID must be reprovisioned), got %d",
+			len(ml.CreateDeviceAccessKeyCalls))
+	}
+	call := ml.CreateDeviceAccessKeyCalls[0]
+	if call.DeviceID != "new-cluster-device-id" {
+		t.Errorf("CreateDeviceAccessKey DeviceID: got %q, want %q", call.DeviceID, "new-cluster-device-id")
+	}
+
+	var got corev1.Secret
+	if err := c.Get(context.Background(),
+		types.NamespacedName{Name: "losant-gea-credentials", Namespace: "default"}, &got); err != nil {
+		t.Fatalf("losant-gea-credentials not found after reprovision: %v", err)
+	}
+	if string(got.Data["DEVICE_ID"]) != "new-cluster-device-id" {
+		t.Errorf("DEVICE_ID in Secret: got %q, want %q", string(got.Data["DEVICE_ID"]), "new-cluster-device-id")
+	}
+}
+
+// TestBootstrapWithDeploymentRef_EmptySecret_RestartsGEAAndReachesActive verifies the
+// end-to-end bootstrap path when GEA.DeploymentRef is set: the controller creates a credential
+// placeholder on the first reconcile, Bootstrap writes real credentials and patches the
+// Deployment with a restartedAt annotation on the second reconcile, and the reconciler
+// reaches Phase=Active with LastSyncSucceeded=True — confirming the restart precedes sync
+// completion. This is the controller-level regression guard for the empty-Secret bootstrap path
+// described in issue #391.
+func TestBootstrapWithDeploymentRef_EmptySecret_RestartsGEAAndReachesActive(t *testing.T) {
+	ls := baseLS("gea-restart-empty")
+	ls.Spec.GEA.DeploymentRef = "losant-gea"
+
+	geaDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "losant-gea", Namespace: "default"},
+	}
+
+	ml := losant.NewMockClient()
+	c := buildClient(ls, credsSecret(), geaDep)
+	r := newReconciler(c, ml, gea.NewMockClient(), monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+
+	var gotDep appsv1.Deployment
+	if err := c.Get(context.Background(), types.NamespacedName{Name: "losant-gea", Namespace: "default"}, &gotDep); err != nil {
+		t.Fatalf("GEA deployment not found: %v", err)
+	}
+	if gotDep.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] == "" {
+		t.Errorf("expected restartedAt annotation on GEA deployment after bootstrap")
+	}
+
+	var got losantv1alpha1.LosantSync
+	if err := c.Get(context.Background(), reqFor(ls.Name).NamespacedName, &got); err != nil {
+		t.Fatalf("get LosantSync: %v", err)
+	}
+	if got.Status.Phase != losantv1alpha1.PhaseActive {
+		t.Errorf("Phase: got %q, want Active", got.Status.Phase)
+	}
+	if !conditionTrue(got.Status.Conditions, "GEABootstrapped") {
+		t.Error("expected GEABootstrapped=True after bootstrap")
+	}
+	if !conditionTrue(got.Status.Conditions, "LastSyncSucceeded") {
+		t.Error("expected LastSyncSucceeded=True after successful reconcile with GEA restart")
+	}
+}
 
 // TestWorkflowDeployments_EmptySpec verifies that when spec.WorkflowDeployments is
 // empty the reconciler does not set any WorkflowDeployed condition and still reaches Active.

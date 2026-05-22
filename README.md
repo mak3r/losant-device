@@ -10,6 +10,7 @@ Remote Kubernetes clusters — especially k3s deployments at edge locations — 
 - **Cluster drill-down**: per-node metrics filtered by cluster or region
 - **Node detail**: time-series CPU, memory, pod health, and condition flags
 - **Rancher Manager link**: one click from any cluster view to the management UI
+- **Rancher dynamic connect/disconnect**: register and deregister clusters from Rancher Manager on demand, via Losant dashboard buttons or cloud workflows — without touching the cluster directly
 
 The operator runs inside each cluster and reports metrics to Losant on a configurable schedule (cron or interval), with resilience to intermittent network connectivity via the Losant Gateway Edge Agent (GEA).
 
@@ -60,6 +61,18 @@ Devices are tagged with `cluster_name`, `region`, `health_status`, and `rancher_
 | `spec.tags.gps` | string | No | Physical location of this cluster, typically in decimal-degree format (e.g., `"37.7749,-122.4194"`). Not validated. |
 
 All three fields are optional and unvalidated. They appear on the cluster (Edge Compute) device only — not on node (peripheral) devices.
+
+## Health Score
+
+Every cluster and node is assigned a **health score** from 0 to 100, derived from live Kubernetes state — node conditions, crashlooping pods, failed pods, Warning events, CoreDNS availability, and PVC binding status. The score is reported to Losant as a numeric data field and mapped to a `health_status` tag:
+
+| Score | Status |
+|---|---|
+| 80 – 100 | `healthy` |
+| 50 – 79 | `degraded` |
+| 0 – 49 | `critical` |
+
+See [docs/calculating-health.md](docs/calculating-health.md) for the full deduction table, score thresholds, and `kubectl` commands to diagnose a lower-than-expected score.
 
 ## Quick Start
 
@@ -162,6 +175,7 @@ See [CLAUDE.md](CLAUDE.md) for agent development instructions and persona workfl
 
 - [Setup Guide](docs/setup/README.md) — sequenced setup: Losant device → cluster deployment → workflow → operator config
 - [Architecture](docs/architecture.md) — system design, device model, controller internals
+- [Health Score](docs/calculating-health.md) — deduction table, status thresholds, and kubectl debugging commands
 - [Helm Values](helm/README.md) — full reference for all Helm chart values
 - [Agent Workflow](docs/agent-workflow.md) — multi-agent branch strategy and persona rules
 - [Runbook](docs/runbook.md) — operational procedures: deploy, diagnose, schedule changes, e2e suite
