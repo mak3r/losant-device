@@ -111,6 +111,7 @@ gh issue view <blocking-n> --json state --jq '.state'
 
 **Do not ask the user about blocked issues.** Resolve them autonomously using the rules above.
 
+
 **If persona is `merge-manager`**, use this priority order:
 
 | Priority | Condition |
