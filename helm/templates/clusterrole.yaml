@@ -74,4 +74,34 @@ rules:
   - get
   - patch
   - update
+{{- if .Values.rancher.enabled }}
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - create
+  - delete
+  - get
+- apiGroups:
+  - losant.io
+  resources:
+  - ranchersessions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - losant.io
+  resources:
+  - ranchersessions/status
+  verbs:
+  - get
+  - patch
+  - update
+{{- end }}
 {{- end }}

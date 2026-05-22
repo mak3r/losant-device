@@ -19,6 +19,7 @@ package losant
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -372,6 +373,109 @@ func TestCreateDevice_EmptyDeviceIDError(t *testing.T) {
 	}
 }
 
+// --- tagsFromSpec: ClusterTags ---
+
+func TestTagsFromSpec_AllClusterTagsSet(t *testing.T) {
+	spec := newTestSpec()
+	spec.Tags = losantv1alpha1.ClusterTags{
+		Manager: "https://management.example.com",
+		UID:     "cluster-uid-abc",
+		GPS:     "37.7749,-122.4194",
+	}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["manager"] != "https://management.example.com" {
+		t.Errorf("manager: got %q, want %q", tagMap["manager"], "https://management.example.com")
+	}
+	if tagMap["uid"] != "cluster-uid-abc" {
+		t.Errorf("uid: got %q, want %q", tagMap["uid"], "cluster-uid-abc")
+	}
+	if tagMap["gps"] != "37.7749,-122.4194" {
+		t.Errorf("gps: got %q, want %q", tagMap["gps"], "37.7749,-122.4194")
+	}
+}
+
+func TestTagsFromSpec_PartialClusterTags_OnlyUID(t *testing.T) {
+	spec := newTestSpec()
+	spec.Tags = losantv1alpha1.ClusterTags{UID: "uid-xyz"}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["uid"] != "uid-xyz" {
+		t.Errorf("uid: got %q, want %q", tagMap["uid"], "uid-xyz")
+	}
+	if _, ok := tagMap["manager"]; ok {
+		t.Error("manager tag must not appear when Manager field is empty")
+	}
+	if _, ok := tagMap["gps"]; ok {
+		t.Error("gps tag must not appear when GPS field is empty")
+	}
+}
+
+func TestTagsFromSpec_ZeroValueClusterTags_BaseTagsPreserved(t *testing.T) {
+	spec := newTestSpec()
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	if tagMap["clusterName"] != "test-cluster" {
+		t.Errorf("clusterName: got %q, want %q", tagMap["clusterName"], "test-cluster")
+	}
+	if tagMap["region"] != "us-west-1" {
+		t.Errorf("region: got %q, want %q", tagMap["region"], "us-west-1")
+	}
+	for _, k := range []string{"manager", "uid", "gps"} {
+		if _, ok := tagMap[k]; ok {
+			t.Errorf("%s tag must not appear when ClusterTags is zero-value", k)
+		}
+	}
+}
+
+func TestTagsFromSpec_AllFieldsSet_FullTagSet(t *testing.T) {
+	spec := newTestSpec()
+	spec.RancherURL = "https://rancher.example.com"
+	spec.Tags = losantv1alpha1.ClusterTags{
+		Manager: "https://mgmt.example.com",
+		UID:     "uid-123",
+		GPS:     "40.7128,-74.0060",
+	}
+	tags := tagsFromSpec(spec)
+
+	tagMap := make(map[string]string, len(tags))
+	for _, tag := range tags {
+		tagMap[tag.Key] = tag.Value
+	}
+
+	expected := map[string]string{
+		"clusterName": "test-cluster",
+		"region":      "us-west-1",
+		"rancherURL":  "https://rancher.example.com",
+		"manager":     "https://mgmt.example.com",
+		"uid":         "uid-123",
+		"gps":         "40.7128,-74.0060",
+	}
+	for k, v := range expected {
+		if got := tagMap[k]; got != v {
+			t.Errorf("tag %q: got %q, want %q", k, got, v)
+		}
+	}
+	if len(tags) != len(expected) {
+		t.Errorf("tag count: got %d, want %d; tags: %v", len(tags), len(expected), tags)
+	}
+}
+
 // --- tagsFromSpec: RancherURL branch ---
 
 func TestTagsFromSpec_WithRancherURL(t *testing.T) {
@@ -685,5 +789,123 @@ func TestEnsureNodeDevice_Found_PatchHasAttributes(t *testing.T) {
 	attrs, ok := patchBody["attributes"].([]interface{})
 	if !ok || len(attrs) != 11 {
 		t.Errorf("PATCH body: expected 11 node attributes, got: %v", patchBody["attributes"])
+	}
+}
+
+// --- ReleaseWorkflow ---
+
+func TestReleaseWorkflow_Success(t *testing.T) {
+	var called bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-abc", "v1.0.0")
+	if err != nil {
+		t.Fatalf("ReleaseWorkflow: unexpected error: %v", err)
+	}
+	if !called {
+		t.Error("expected POST /applications/app-123/edge/deployments/release to be called")
+	}
+}
+
+func TestReleaseWorkflow_WorkflowNotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"type":"ResourceNotFound","message":"flow not found"}`, http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-missing", "v1.0.0")
+	if !errors.Is(err, ErrWorkflowNotFound) {
+		t.Fatalf("ReleaseWorkflow on 404: expected ErrWorkflowNotFound, got: %v", err)
+	}
+}
+
+func TestReleaseWorkflow_SendsVersionField(t *testing.T) {
+	var gotBody map[string]interface{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /applications/app-123/edge/deployments/release", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		writeJSON(w, struct{}{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := newTestHTTPClient(srv.URL).ReleaseWorkflow(context.Background(), "app-123", "dev-edge-1", "flow-abc", "v1.0.0")
+	if err != nil {
+		t.Fatalf("ReleaseWorkflow: unexpected error: %v", err)
+	}
+	// Losant release API uses "version", not "flowVersion"
+	if gotBody["version"] != "v1.0.0" {
+		t.Errorf("version: got %v, want %q", gotBody["version"], "v1.0.0")
+	}
+	if gotBody["flowVersion"] != nil {
+		t.Errorf("flowVersion field must be absent: got %v (wrong field causes 404 from Losant)", gotBody["flowVersion"])
+	}
+	if gotBody["flowId"] != "flow-abc" {
+		t.Errorf("flowId: got %v, want %q", gotBody["flowId"], "flow-abc")
+	}
+	deviceIds, ok := gotBody["deviceIds"].([]interface{})
+	if !ok || len(deviceIds) != 1 || deviceIds[0] != "dev-edge-1" {
+		t.Errorf("deviceIds: got %v, want [\"dev-edge-1\"]", gotBody["deviceIds"])
+	}
+}
+
+// --- GetEdgeDeployments ---
+
+func TestGetEdgeDeployments_Success(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/edge/deployments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{
+			"items": []map[string]interface{}{
+				{"flowId": "flow-1", "currentVersion": "v1.0.0", "desiredVersion": "v1.1.0"},
+				{"flowId": "flow-2", "currentVersion": "v2.0.0", "desiredVersion": "v2.0.0"},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	deployments, err := newTestHTTPClient(srv.URL).GetEdgeDeployments(context.Background(), "app-123", "dev-edge-1")
+	if err != nil {
+		t.Fatalf("GetEdgeDeployments: unexpected error: %v", err)
+	}
+	if len(deployments) != 2 {
+		t.Fatalf("GetEdgeDeployments: got %d items, want 2", len(deployments))
+	}
+	if deployments[0].FlowID != "flow-1" {
+		t.Errorf("deployments[0].FlowID: got %q, want %q", deployments[0].FlowID, "flow-1")
+	}
+	if deployments[0].CurrentVersion != "v1.0.0" {
+		t.Errorf("deployments[0].CurrentVersion: got %q, want %q", deployments[0].CurrentVersion, "v1.0.0")
+	}
+	if deployments[0].DesiredVersion != "v1.1.0" {
+		t.Errorf("deployments[0].DesiredVersion: got %q, want %q", deployments[0].DesiredVersion, "v1.1.0")
+	}
+	if deployments[1].FlowID != "flow-2" {
+		t.Errorf("deployments[1].FlowID: got %q, want %q", deployments[1].FlowID, "flow-2")
+	}
+}
+
+func TestGetEdgeDeployments_Empty(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /applications/app-123/edge/deployments", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"items": []interface{}{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	deployments, err := newTestHTTPClient(srv.URL).GetEdgeDeployments(context.Background(), "app-123", "dev-edge-1")
+	if err != nil {
+		t.Fatalf("GetEdgeDeployments empty: unexpected error: %v", err)
+	}
+	if len(deployments) != 0 {
+		t.Errorf("GetEdgeDeployments empty: got %d items, want 0", len(deployments))
 	}
 }

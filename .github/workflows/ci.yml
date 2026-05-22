@@ -67,7 +67,7 @@ jobs:
       - name: Check Dockerfile builder matches go.mod
         run: |
           GOMOD_VER=$(grep '^go ' go.mod | awk '{print $2}')
-          DOCKERFILE_VER=$(grep '^FROM golang:' Dockerfile | sed 's/FROM golang:\([^ ]*\).*/\1/')
+          DOCKERFILE_VER=$(grep '^FROM.*golang:' Dockerfile | head -1 | sed 's/.*golang:\([^ -]*\).*/\1/')
           echo "go.mod requires: $GOMOD_VER"
           echo "Dockerfile uses: $DOCKERFILE_VER"
           if [ "$GOMOD_VER" != "$DOCKERFILE_VER" ]; then
@@ -141,17 +141,65 @@ jobs:
 
           added = gen_perms - com_perms
           removed = com_perms - gen_perms
-          print("ERROR: config/rbac/role.yaml permissions have drifted from the committed baseline.")
-          print("A security review is required before adding new RBAC permissions.")
-          print("Open an issue labeled persona/security and type/security before merging.")
+
           if added:
-              print("\nAdded permissions (require security review):")
+              print("ERROR: Markers request permissions not present in the security-approved baseline.")
+              print("Open an issue labeled persona/security and type/security before merging.")
+              print("\nUnapproved permissions (require security review):")
               for g, res, v in sorted(added):
                   print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
+              sys.exit(1)
+
           if removed:
-              print("\nRemoved permissions:")
+              print("INFO: Security baseline contains permissions not yet covered by markers.")
+              print("This is expected when security approves new permissions before developers add markers.")
+              print("\nApproved but not yet reflected in markers:")
               for g, res, v in sorted(removed):
                   print(f"  apiGroup={g!r} resource={res!r} verb={v!r}")
+              sys.exit(0)
+          EOF
+
+  helm-crd-drift:
+    name: Helm CRD Drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate manifests
+        run: make manifests
+
+      - name: Check Helm CRD schema matches generated CRD
+        run: |
+          python3 - <<'EOF'
+          import yaml, sys
+
+          with open("helm/templates/crd.yaml") as f:
+              helm_raw = "\n".join(
+                  line.rstrip("\n") for line in f
+                  if "{{" not in line
+              )
+
+          with open("config/crd/bases/losant.io_losantsyncs.yaml") as f:
+              gen_raw = f.read()
+
+          helm_crd = yaml.safe_load(helm_raw)
+          gen_crd = yaml.safe_load(gen_raw)
+
+          helm_versions = helm_crd["spec"]["versions"]
+          gen_versions = gen_crd["spec"]["versions"]
+
+          if helm_versions == gen_versions:
+              print("helm/templates/crd.yaml spec.versions matches generated CRD — no drift.")
+              sys.exit(0)
+
+          print("ERROR: helm/templates/crd.yaml spec.versions has drifted from config/crd/bases/losant.io_losantsyncs.yaml")
+          print("Sync helm/templates/crd.yaml with the generated CRD after running 'make manifests'.")
           sys.exit(1)
           EOF
 

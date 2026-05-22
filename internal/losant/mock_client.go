@@ -40,6 +40,8 @@ type MockClient struct {
 	CreateDeviceAccessKeyFunc func(ctx context.Context, applicationID, deviceID, name string) (string, string, string, error)
 	PatchDeviceAttributesFunc func(ctx context.Context, applicationID, deviceID string, attrs []DeviceAttribute) error
 	DeleteDeviceFunc          func(ctx context.Context, applicationID, deviceID string) error
+	ReleaseWorkflowFunc       func(ctx context.Context, applicationID, deviceID, flowID, version string) error
+	GetEdgeDeploymentsFunc    func(ctx context.Context, applicationID, deviceID string) ([]EdgeDeploymentStatus, error)
 
 	// Recorded calls — read after test assertions.
 	PingCalls                  []struct{}
@@ -50,6 +52,8 @@ type MockClient struct {
 	CreateDeviceAccessKeyCalls []CreateDeviceAccessKeyCall
 	PatchDeviceAttributesCalls []PatchDeviceAttributesCall
 	DeleteDeviceCalls          []DeleteDeviceCall
+	ReleaseWorkflowCalls       []ReleaseWorkflowCall
+	GetEdgeDeploymentsCalls    []GetEdgeDeploymentsCall
 }
 
 // EnsureClusterDeviceCall records one invocation of EnsureClusterDevice.
@@ -97,6 +101,20 @@ type DeleteDeviceCall struct {
 	DeviceID      string
 }
 
+// ReleaseWorkflowCall records one invocation of ReleaseWorkflow.
+type ReleaseWorkflowCall struct {
+	ApplicationID string
+	DeviceID      string
+	FlowID        string
+	Version       string
+}
+
+// GetEdgeDeploymentsCall records one invocation of GetEdgeDeployments.
+type GetEdgeDeploymentsCall struct {
+	ApplicationID string
+	DeviceID      string
+}
+
 // NewMockClient returns a MockClient with sensible defaults:
 // EnsureClusterDevice returns "mock-cluster-device-id"
 // EnsureNodeDevice returns "mock-node-<nodeName>"
@@ -134,6 +152,12 @@ func (m *MockClient) SetError(err error) {
 	m.DeleteDeviceFunc = func(_ context.Context, _, _ string) error {
 		return err
 	}
+	m.ReleaseWorkflowFunc = func(_ context.Context, _, _, _, _ string) error {
+		return err
+	}
+	m.GetEdgeDeploymentsFunc = func(_ context.Context, _, _ string) ([]EdgeDeploymentStatus, error) {
+		return nil, err
+	}
 }
 
 // CallCount returns the total number of calls recorded across all methods.
@@ -147,7 +171,9 @@ func (m *MockClient) CallCount() int {
 		len(m.GetDeviceCalls) +
 		len(m.CreateDeviceAccessKeyCalls) +
 		len(m.PatchDeviceAttributesCalls) +
-		len(m.DeleteDeviceCalls)
+		len(m.DeleteDeviceCalls) +
+		len(m.ReleaseWorkflowCalls) +
+		len(m.GetEdgeDeploymentsCalls)
 }
 
 // Reset clears all recorded calls and resets all HandlerFuncs to defaults.
@@ -162,6 +188,8 @@ func (m *MockClient) Reset() {
 	m.CreateDeviceAccessKeyFunc = nil
 	m.PatchDeviceAttributesFunc = nil
 	m.DeleteDeviceFunc = nil
+	m.ReleaseWorkflowFunc = nil
+	m.GetEdgeDeploymentsFunc = nil
 	m.PingCalls = nil
 	m.EnsureClusterDeviceCalls = nil
 	m.EnsureNodeDeviceCalls = nil
@@ -170,6 +198,8 @@ func (m *MockClient) Reset() {
 	m.CreateDeviceAccessKeyCalls = nil
 	m.PatchDeviceAttributesCalls = nil
 	m.DeleteDeviceCalls = nil
+	m.ReleaseWorkflowCalls = nil
+	m.GetEdgeDeploymentsCalls = nil
 }
 
 // Ping implements LosantClient.
@@ -292,4 +322,56 @@ func (m *MockClient) DeleteDevice(ctx context.Context, applicationID, deviceID s
 		return fn(ctx, applicationID, deviceID)
 	}
 	return nil
+}
+
+// ReleaseWorkflow implements LosantClient.
+func (m *MockClient) ReleaseWorkflow(ctx context.Context, applicationID, deviceID, flowID, version string) error {
+	m.mu.Lock()
+	m.ReleaseWorkflowCalls = append(m.ReleaseWorkflowCalls, ReleaseWorkflowCall{
+		ApplicationID: applicationID,
+		DeviceID:      deviceID,
+		FlowID:        flowID,
+		Version:       version,
+	})
+	fn := m.ReleaseWorkflowFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, applicationID, deviceID, flowID, version)
+	}
+	return nil
+}
+
+// GetEnsureClusterDeviceCalls returns a thread-safe snapshot of all recorded EnsureClusterDevice calls.
+func (m *MockClient) GetEnsureClusterDeviceCalls() []EnsureClusterDeviceCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]EnsureClusterDeviceCall, len(m.EnsureClusterDeviceCalls))
+	copy(out, m.EnsureClusterDeviceCalls)
+	return out
+}
+
+// GetEnsureNodeDeviceCalls returns a thread-safe snapshot of all recorded EnsureNodeDevice calls.
+func (m *MockClient) GetEnsureNodeDeviceCalls() []EnsureNodeDeviceCall {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]EnsureNodeDeviceCall, len(m.EnsureNodeDeviceCalls))
+	copy(out, m.EnsureNodeDeviceCalls)
+	return out
+}
+
+// GetEdgeDeployments implements LosantClient.
+func (m *MockClient) GetEdgeDeployments(ctx context.Context, applicationID, deviceID string) ([]EdgeDeploymentStatus, error) {
+	m.mu.Lock()
+	m.GetEdgeDeploymentsCalls = append(m.GetEdgeDeploymentsCalls, GetEdgeDeploymentsCall{
+		ApplicationID: applicationID,
+		DeviceID:      deviceID,
+	})
+	fn := m.GetEdgeDeploymentsFunc
+	m.mu.Unlock()
+
+	if fn != nil {
+		return fn(ctx, applicationID, deviceID)
+	}
+	return nil, nil
 }

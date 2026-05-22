@@ -30,6 +30,35 @@ const (
 	PhaseSuspended    LosantSyncPhase = "Suspended"
 )
 
+const ConditionWorkflowDeployed = "WorkflowDeployed"
+
+// WorkflowDeployment declares a single Edge Workflow version to deploy to this cluster's Edge Compute device.
+type WorkflowDeployment struct {
+	// FlowID is the Losant Edge Workflow ID.
+	FlowID string `json:"flowId"`
+	// Version is the named workflow version to deploy.
+	Version string `json:"version"`
+}
+
+// ClusterTags holds optional freeform string tags applied to the cluster
+// device in Losant at provisioning time. No values are validated.
+type ClusterTags struct {
+	// Manager is an arbitrary string, typically a URI identifying the
+	// management plane responsible for this cluster.
+	// +optional
+	Manager string `json:"manager,omitempty"`
+
+	// UID is an arbitrary string intended to uniquely identify this cluster
+	// across management systems.
+	// +optional
+	UID string `json:"uid,omitempty"`
+
+	// GPS is an arbitrary string representing the physical location of this
+	// cluster, typically in decimal-degree coordinate format.
+	// +optional
+	GPS string `json:"gps,omitempty"`
+}
+
 // SecretRef identifies a Kubernetes Secret by name and namespace.
 type SecretRef struct {
 	// +kubebuilder:validation:Required
@@ -103,6 +132,16 @@ type LosantSyncSpec struct {
 	// +optional
 	DeviceRecipeID string `json:"deviceRecipeID,omitempty"`
 
+	// WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.
+	// If omitted, no workflow deployment is attempted.
+	// +optional
+	WorkflowDeployments []WorkflowDeployment `json:"workflowDeployments,omitempty"`
+
+	// Tags are optional freeform identity tags forwarded to the Losant cluster
+	// device at provisioning time.
+	// +optional
+	Tags ClusterTags `json:"tags,omitempty"`
+
 	// Suspend disables all reconciliation when true.
 	// +optional
 	// +kubebuilder:default=false
@@ -148,7 +187,7 @@ type LosantSyncStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="GEA",type=string,JSONPath=`.status.conditions[?(@.type=="GEAReachable")].status`
 // +kubebuilder:printcolumn:name="Last Sync",type=date,JSONPath=`.status.lastSyncTime`
-// +kubebuilder:printcolumn:name="Next Sync",type=date,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Next Sync",type=string,JSONPath=`.status.nextScheduledTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // LosantSync is the Schema for the losantsyncs API.

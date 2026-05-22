@@ -24,5 +24,11 @@ spec:
           env:
             - name: GEA_DEPLOYMENT_REF
               value: {{ if .Values.gea.deploymentRef }}{{ .Values.gea.deploymentRef | quote }}{{ else }}{{ printf "%s-gea" (include "losant-device.fullname" .) | quote }}{{ end }}
+          {{- if .Values.rancher.enabled }}
+          ports:
+            - name: trigger
+              containerPort: 9090
+              protocol: TCP
+          {{- end }}
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}

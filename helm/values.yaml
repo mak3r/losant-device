@@ -46,6 +46,13 @@ gea:
       accessKey: ""
       accessSecret: ""
 
+rancher:
+  # enabled: gates whether RancherSession CRD, rancher-credentials Secret, and trigger Service are installed
+  enabled: false
+  credentialsSecret:
+    name: rancher-credentials
+  defaultTTLSeconds: 3600
+
 rbac:
   create: true
 

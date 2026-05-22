@@ -47,12 +47,13 @@ import (
 )
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	testEnv   *envtest.Environment
-	scheme    = runtime.NewScheme()
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg              *rest.Config
+	k8sClient        client.Client
+	testEnv          *envtest.Environment
+	scheme           = runtime.NewScheme()
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mockLosantClient *losant.MockClient
 )
 
 func TestIntegration(t *testing.T) {
@@ -102,10 +103,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	mockLosantClient = losant.NewMockClient()
 	err = (&controller.LosantSyncReconciler{
 		Client:       mgr.GetClient(),
 		Scheme:       mgr.GetScheme(),
-		LosantClient: losant.NewMockClient(),
+		LosantClient: mockLosantClient,
 		GEAClient:    gea.NewMockClient(),
 		HealthStore:  monitor.NewHealthStore(),
 	}).SetupWithManager(mgr)

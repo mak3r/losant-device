@@ -23,12 +23,15 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.conditions[?(@.type=="GEAReachable")].status
+      name: GEA
+      type: string
     - jsonPath: .status.lastSyncTime
       name: Last Sync
       type: date
     - jsonPath: .status.nextScheduledTime
       name: Next Sync
-      type: date
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -84,6 +87,11 @@ spec:
               gea:
                 description: GEA configures the in-cluster Gateway Edge Agent service.
                 properties:
+                  deploymentRef:
+                    description: |-
+                      DeploymentRef is the name of the GEA Deployment for rolling-restart automation.
+                      If empty, credential bootstrap writes the Secret but does not restart the GEA.
+                    type: string
                   port:
                     default: 8080
                     description: Port is the HTTP trigger port on the GEA pod (default
@@ -132,6 +140,46 @@ spec:
                 default: false
                 description: Suspend disables all reconciliation when true.
                 type: boolean
+              tags:
+                description: |-
+                  Tags are optional freeform identity tags forwarded to the Losant cluster
+                  device at provisioning time.
+                properties:
+                  gps:
+                    description: |-
+                      GPS is an arbitrary string representing the physical location of this
+                      cluster, typically in decimal-degree coordinate format.
+                    type: string
+                  manager:
+                    description: |-
+                      Manager is an arbitrary string, typically a URI identifying the
+                      management plane responsible for this cluster.
+                    type: string
+                  uid:
+                    description: |-
+                      UID is an arbitrary string intended to uniquely identify this cluster
+                      across management systems.
+                    type: string
+                type: object
+              workflowDeployments:
+                description: |-
+                  WorkflowDeployments lists Edge Workflows to deploy to this cluster's Edge Compute device.
+                  If omitted, no workflow deployment is attempted.
+                items:
+                  description: WorkflowDeployment declares a single Edge Workflow
+                    version to deploy to this cluster's Edge Compute device.
+                  properties:
+                    flowId:
+                      description: FlowID is the Losant Edge Workflow ID.
+                      type: string
+                    version:
+                      description: Version is the named workflow version to deploy.
+                      type: string
+                  required:
+                  - flowId
+                  - version
+                  type: object
+                type: array
             required:
             - applicationID
             - clusterName
@@ -152,7 +200,7 @@ spec:
               conditions:
                 description: |-
                   Conditions represent the latest available observations of the resource's state.
-                  Known condition types: GEAReachable, DevicesProvisioned, LastSyncSucceeded.
+                  Known condition types: GEABootstrapped, GEAReachable, DevicesProvisioned, LastSyncSucceeded.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
