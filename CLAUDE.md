@@ -19,7 +19,7 @@ Every piece of work is owned by exactly one persona. A persona only modifies fil
 | **security** | `persona/security` | `config/rbac/**`, security CI steps in `.github/workflows/**`, secret handling review |
 | **qa** | `persona/qa` | `test/e2e/**`, `docs/acceptance-criteria.md`, `docs/runbook.md` |
 | **gitops-manager** | `persona/gitops-manager` | `helm/**`, `config/**` (except `config/rbac/` which is security), `.github/workflows/**`, `Makefile` |
-| **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, inline `// +kubebuilder:` marker comments |
+| **docs** | `persona/docs` | `docs/**`, `README.md`, `CLAUDE.md`, `.claude/commands/**`, inline `// +kubebuilder:` marker comments |
 | **merge-manager** | — (no commits) | Creates GitHub issues and PR comments only |
 | **product-designer** | `persona/product-designer` | `.claude/plans/**`, GitHub Issues (create only), `docs/architecture.md` (joint with docs) |
 | **triage** | — (no commits) | Creates GitHub issues only; evaluates whether a reported issue is valid by code analysis and human intake interview |

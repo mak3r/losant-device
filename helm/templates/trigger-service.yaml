@@ -1,0 +1,18 @@
+{{- if .Values.rancher.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "losant-device.fullname" . }}-trigger
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "losant-device.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "losant-device.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: trigger
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+{{- end }}

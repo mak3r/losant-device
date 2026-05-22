@@ -276,7 +276,36 @@ kubectl wait losantsync <name> --for=jsonpath='{.status.phase}'=Active --timeout
 
 ---
 
-## 12. E2E Test Coverage Map
+## 12. Rancher Dynamic Connect/Disconnect
+
+This section covers the RancherSession CR lifecycle managed by the trigger receiver HTTP server
+and the `RancherSessionReconciler`. All criteria require `RANCHER_URL`, `RANCHER_TOKEN`,
+`RANCHER_CA`, and `TRIGGER_ADDR` env vars to be set before running `make e2e`.
+
+### RancherSession Phase Model
+
+| Phase | Meaning |
+|---|---|
+| *(empty)* | CR just created; no reconcile has run |
+| `Connecting` | Controller is creating the Rancher cluster, applying the import manifest, and polling for `cattle-cluster-agent` readiness |
+| `Connected` | Agent is ready; TTL countdown active |
+| `Disconnecting` | Controller is deleting the Rancher cluster record and `cattle-system` namespace |
+| `Disconnected` | Cleanup complete; CR remains for audit; no further reconciliation |
+| `Failed` | Credential secret missing or unreadable; reconciliation halted |
+
+### Testable Statements — Rancher
+
+- **AC-RANCHER-01**: After a `POST /rancher {"action":"connect"}` to the trigger receiver, a `RancherSession` CR MUST be created in `losant-system` and reach `Phase=Connected` within 120 seconds (requires pre-pulled `rancher/rancher-agent` image). The downstream cluster MUST appear in the Rancher Manager API.
+- **AC-RANCHER-02**: A session connected with `ttlSeconds: 120` MUST transition to `Phase=Disconnected` within 3 minutes of connecting. The Rancher cluster record MUST be removed.
+- **AC-RANCHER-03**: After a trigger `disconnect`, a new trigger `connect` MUST create a new `RancherSession` that reaches `Phase=Connected` and a cluster reappears in Rancher with the same display name.
+- **AC-RANCHER-04**: When the downstream cluster is deleted from the Rancher API directly, the controller MUST detect the deletion within its TTL poll window, transition the `RancherSession` to `Phase=Disconnected`, and remove the `cattle-system` namespace.
+- **AC-RANCHER-05**: Two concurrent `POST /rancher {"action":"connect"}` requests MUST result in exactly one `202 Accepted` and one `409 Conflict`. Exactly one `RancherSession` CR MUST exist.
+- **AC-RANCHER-06**: When the `RANCHER_URL` in the credentials secret is unreachable, the controller MUST set `Phase=Connecting` and the `RancherAPIReachable` condition to `False`. It MUST continue retrying (requeue every 30 s). `LosantSync` reconciliation MUST continue normally and MUST NOT be blocked.
+- **AC-RANCHER-07**: After any disconnect path (trigger, TTL expiry, or Rancher-initiated), the `losant-system` namespace MUST remain intact, the `LosantSync` CR MUST continue reconciling, and no unexpected namespace deletions MUST occur.
+
+---
+
+## 13. E2E Test Coverage Map
 
 | Criteria | Test File | Test Description | Status |
 |---|---|---|---|
@@ -308,3 +337,10 @@ kubectl wait losantsync <name> --for=jsonpath='{.status.phase}'=Active --timeout
 | AC-LIFECYCLE-04 | lifecycle_test.go | "deletes all Losant devices when the CR is deleted" | Implemented |
 | AC-GITOPS-01..04 | — | Source-independent Helm OCI install + Active phase | Manual (no E2E automation; requires published release) |
 | CRD validation | validation_test.go | CEL rules, required fields, port range, defaults | Implemented |
+| AC-RANCHER-01 | rancher_test.go | "transitions to Connected within 120s and cluster appears in Rancher" | Implemented (requires pre-pulled agent image + RANCHER_* env vars) |
+| AC-RANCHER-02 | rancher_test.go | "auto-disconnects when TTL expires and removes the Rancher cluster record" | Implemented (requires RANCHER_* env vars; takes ~3 min) |
+| AC-RANCHER-03 | rancher_test.go | "reconnects via trigger and cluster reappears in Rancher with the same display name" | Implemented (requires RANCHER_* env vars) |
+| AC-RANCHER-04 | rancher_test.go | "detects Rancher-initiated cluster deletion and removes cattle-system" | Implemented (requires RANCHER_* env vars) |
+| AC-RANCHER-05 | rancher_test.go | "returns 409 on a duplicate connect and only one RancherSession exists" | Implemented |
+| AC-RANCHER-06 | rancher_test.go | "sets RancherAPIReachable=False when Rancher API is unreachable" | Implemented |
+| AC-RANCHER-07 | rancher_test.go | "leaves losant-system and LosantSync intact after a trigger-initiated disconnect" | Implemented (requires RANCHER_* env vars) |

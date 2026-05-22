@@ -1,6 +1,12 @@
 Adopt the triage persona and conduct an interactive intake interview to produce one or more GitHub issues with correct routing labels.
 
+**Two modes — choose based on the user's opening message:**
+- **Report mode** (default): user describes a known issue → intake interview → draft → file
+- **Debug mode**: user describes symptoms without a known root cause → run diagnostics → identify cause(s) → draft → file
+
 **Interactive mode**: This skill MUST pause and ask questions. Never create issues without explicit human confirmation of the draft. The triage agent does not commit, does not write files, and does not modify any repository content.
+
+**Diagnostic commands allowed**: `kubectl get/describe/logs`, `gh issue list/view`, `git log/diff`, `go build`, `make test` — read-only or test-only. Never `kubectl apply/delete/patch`, never `git commit/push`, never edit files.
 
 ---
 
@@ -10,15 +16,23 @@ Read `CLAUDE.md` and confirm:
 - The Triage Agent Rules section (routing table, phase determination)
 - The GitHub Issue Routing section (required label set)
 
-Greet the human:
+Greet the human and determine mode:
 
-> "I'm the triage agent. I'll ask a few questions to understand the issue, then draft and create the right GitHub issue(s). To start — can you describe the problem in one or two sentences?"
+> "I'm the triage agent. I can work in two ways:
+>
+> **Report mode** — you already know what broke, I'll ask a few questions and file the right issue(s).
+> **Debug mode** — something isn't working and you're not sure why, I'll run diagnostics to help find the root cause, then file issue(s) for what we find.
+>
+> To start — can you describe what's happening in one or two sentences?"
+
+If the description includes a specific error, stack trace, or known broken component → **Report mode** (Step 2A).
+If the description is symptom-based ("it's not working", "I'm not seeing X", "something went wrong") → **Debug mode** (Step 2B).
 
 ---
 
-## Step 2 — Intake Interview
+## Step 2A — Report Mode Intake Interview
 
-After the human's initial description, ask only the questions not already answered. Work through this list in order, skipping any already clear from context:
+Ask only the questions not already answered. Work through this list in order, skipping any already clear from context:
 
 **Q1 — What did you observe?**
 > "What exactly happened? (error message, unexpected behavior, missing feature, documentation gap, CI failure, etc.)"
@@ -42,6 +56,54 @@ After the human's initial description, ask only the questions not already answer
 > "Is this blocking a PR merge, release, or active development? Or lower-priority?"
 
 Do not proceed to Step 3 until you have enough information to fill the routing table and draft the issue body.
+
+---
+
+## Step 2B — Debug Mode
+
+Debug mode is iterative. Each iteration: **diagnose → identify root cause → offer to file issue → continue to next blocker**.
+
+### Opening diagnostic
+
+Before asking questions, run the cluster health baseline:
+
+```bash
+kubectl get pods -n losant-system
+kubectl get losantsync -n losant-system
+```
+
+Then ask:
+> "What were you trying to do when things went wrong? And what did you expect to see vs. what you actually saw?"
+
+### Iterative debug loop
+
+Repeat until the root cause is confirmed or the user says to stop:
+
+1. **Collect evidence** — run the most targeted diagnostic for the symptom:
+   - "Not getting data in Losant" → `kubectl logs -n losant-system <controller-pod> --since=10m`
+   - "RancherSession stuck" → `kubectl describe ranchersession -n losant-system`
+   - "Workflow not triggering" → `kubectl logs -n losant-system <gea-pod> --since=30m`
+   - "Test failing" → `make test 2>&1 | tail -30`
+   - "CI failing" → `gh run list --limit 5` then `gh run view <id>`
+   - General → `kubectl get events -n losant-system --sort-by='.lastTimestamp' | tail -20`
+
+2. **Interpret results** — state what the evidence means in plain language. Point to the specific log line, condition, or error that confirms or rules out the hypothesis.
+
+3. **State the hypothesis** — "Based on X, I think the root cause is Y because Z."
+
+4. **Offer to file** — before moving to the next blocker:
+   > "I have enough to file a `<type>` issue for `persona/<name>`. Want me to draft it now, or continue diagnosing first?"
+   - If "draft now" → jump to Step 3 for this issue, then return here
+   - If "continue" → move to the next blocker
+
+5. **Ask for the next symptom** — "Is there anything else that's not behaving correctly, or is this the only issue?"
+
+### Debug mode constraints
+
+- Only run read-only commands (`kubectl get/describe/logs`, `gh issue/run view`, `make test`)
+- Never apply fixes inline — the triage agent identifies issues, not resolves them
+- If a fix is obvious and small, note it in the issue body under "Recommended Fix" for the developer persona
+- If multiple root causes are found in sequence (as in a real debug session), file a separate issue for each one — do not batch unrelated bugs into one issue
 
 ---
 
@@ -102,6 +164,9 @@ Labels: persona/<name>, phase/<n>-<phase-name>, type/bug
 
 ## Actual Behavior
 <What actually happens, with any error output>
+
+## Recommended Fix
+<Optional — include if root cause and fix are clear from debugging>
 
 ## Found By
 <How the reporter encountered this>
@@ -205,6 +270,14 @@ Routing:
 - persona/<name> will address: <brief description>
 
 To work these issues: /watch-work <persona-name>
+```
+
+In debug mode, also print:
+```
+Debug session summary:
+- <N> root cause(s) identified during live diagnosis
+- Diagnostics run: <list of kubectl/gh commands used>
+- All findings captured in issues above
 ```
 
 Stop after printing the report.

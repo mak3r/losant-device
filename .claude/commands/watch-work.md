@@ -91,13 +91,26 @@ gh issue view <n>  # look for a "Pull requests:" section in the plain-text outpu
 ```
 If a linked PR is listed, add it to the queue. These linked PRs are part of your work even if they are on a branch not matching your persona's prefix.
 
-Print the combined issue + PR results as a brief queue, then proceed to Step 3.
+Print the combined issue + PR results as a brief queue. Mark any issue carrying `status/blocked` with a `[BLOCKED]` tag in the queue display.
+
+**IMPORTANT: The queue display is an intermediate step, not a stopping point. Proceed immediately to Step 3 — do not pause, do not ask the user any questions.**
 
 ---
 
 ## Step 3 — Pick the Highest-Priority Item
 
 **Skip any issue labeled `type/freeze`** — frozen issues are off-limits for all personas. If one appears in your scored list (e.g., via a PR association), skip it and move to the next item.
+
+**Issues labeled `status/blocked`** — do not skip automatically. For each blocked issue, run `gh issue view <n> --json body --jq '.body'` and extract the blocking issue number(s) referenced in the body. Then check each blocker:
+```bash
+gh issue view <blocking-n> --json state --jq '.state'
+```
+- If **all** referenced blocking issues are `closed`: the block is resolved. Remove the label autonomously (`gh issue edit <n> --remove-label "status/blocked"`) and treat the issue as unblocked for scoring purposes.
+- If **any** referenced blocking issue is still `open`: record this issue in the end-of-session report as a blocker (include the open blocking issue number and its owning persona's label), then skip it — do not work on it.
+- If no blocking issue number can be found in the body: skip the issue and record it in the end-of-session report as "status/blocked but no blocking issue identified — manual review needed."
+
+**Do not ask the user about blocked issues.** Resolve them autonomously using the rules above.
+
 
 **If persona is `merge-manager`**, use this priority order:
 
@@ -193,13 +206,44 @@ For the selected item:
 
 After completing an item (or finding an empty queue):
 
-**Single-check mode** (no duration): stop and print a summary of what was completed.
+**Single-check mode** (no duration): stop and print the end-of-session report (format below).
+
+**Watch mode — session end** (`now >= end_time`): print the end-of-session report, then stop.
+
+### End-of-session report format
+
+```
+=== <persona> session complete @ <HH:MM> UTC ===
+
+COMPLETED (<N> items):
+  #<n>  <title>  — <one-line summary of what was done>  [<sha>]
+  (or: none)
+
+SKIPPED / BLOCKED (<M> items):
+  #<n>  <title>
+    Blocked by: #<blocking-n> (<title if known>) [persona/<owner>]
+    → Invoke: <owner-persona> to resolve
+  (or: none)
+
+NEXT STEPS:
+  → Invoke <persona-name>: <one line describing what they need to do>
+  (list one entry per handoff completed or per open blocker; omit if nothing to hand off)
+
+QUEUE EMPTY: <yes | no — if no, list remaining actionable items>
+===
+```
+
+Rules for the report:
+- **COMPLETED**: one line per item worked. Include the short SHA from `git log --oneline -1`.
+- **SKIPPED / BLOCKED**: one entry per issue that was in your queue but skipped due to an unresolved `status/blocked`, `type/freeze`, or out-of-scope label. For each, state the blocking issue number, its title (from `gh issue view`), and which persona label it carries so the user knows who to invoke.
+- **NEXT STEPS**: derive from (a) handoffs you executed during this session (re-labels or new issues created) and (b) blockers identified in SKIPPED. Name the persona, not the person. If you completed work that a merge-manager PR review is now needed for, always include `→ Invoke merge-manager: review PR #<n>`.
+- Do not print sections that are empty (omit SKIPPED if none, omit NEXT STEPS if none).
 
 **Watch mode:**
 - Is `now < end_time`?
   - **Yes and work was just completed**: immediately return to Step 2 to check for more work.
   - **Yes and queue was empty**: call `ScheduleWakeup` with `delaySeconds: 270`, `reason: "Polling for new work for <persona>"`, `prompt: "Resume watch-work: you are the <persona> persona. Continue from Step 2 — scan for open issues and PRs, pick the highest-priority item, do the work, then loop. Session ends at <end_time_iso>. Do not use slash commands; invoke the watch-work skill directly via the Skill tool with skill name 'watch-work' and args '<persona> until:<end_time_iso>'."`
-  - **No**: print `Session complete for <persona>. Items completed this session: <N>.` and stop.
+  - **No**: print the end-of-session report (see format above) and stop.
 
 ---
 
