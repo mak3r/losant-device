@@ -41,6 +41,7 @@ import (
 // and translates them into RancherSession CR create/delete operations.
 type Server struct {
 	Client    client.Client
+	APIReader client.Reader // direct API reader, bypasses informer cache
 	Addr      string
 	Namespace string
 }
@@ -179,9 +180,11 @@ func (s *Server) handleDisconnect(w http.ResponseWriter, _ *http.Request, ctx co
 
 // losantSyncName lists LosantSync CRs in the server's namespace and returns
 // the name of the first one (the 1:1 mapping target for RancherSession).
+// Uses the direct API reader to bypass the informer cache, which may not be
+// available in HTTP handler goroutines that run outside the manager's context.
 func (s *Server) losantSyncName(ctx context.Context) (string, error) {
 	var lsList losantv1alpha1.LosantSyncList
-	if err := s.Client.List(ctx, &lsList, client.InNamespace(s.Namespace)); err != nil {
+	if err := s.APIReader.List(ctx, &lsList, client.InNamespace(s.Namespace)); err != nil {
 		return "", fmt.Errorf("list LosantSync in %s: %w", s.Namespace, err)
 	}
 	if len(lsList.Items) == 0 {

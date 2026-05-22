@@ -111,6 +111,7 @@ func TestNewHTTPClient_MissingToken(t *testing.T) {
 }
 
 func TestNewHTTPClient_MissingCA(t *testing.T) {
+	// RANCHER_CA is optional; absent key falls back to system cert pool.
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "s", Namespace: "ns"},
 		Data: map[string][]byte{
@@ -118,9 +119,12 @@ func TestNewHTTPClient_MissingCA(t *testing.T) {
 			"RANCHER_TOKEN": []byte("tok"),
 		},
 	}
-	_, err := rancher.NewHTTPClient(secret)
-	if err == nil {
-		t.Fatal("expected error for missing RANCHER_CA")
+	c, err := rancher.NewHTTPClient(secret)
+	if err != nil {
+		t.Fatalf("unexpected error when RANCHER_CA is absent: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil client")
 	}
 }
 

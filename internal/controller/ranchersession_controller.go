@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -323,15 +324,22 @@ func (r *RancherSessionReconciler) applyManifest(ctx context.Context, rs *losant
 		return fmt.Errorf("read credentials secret: %w", err)
 	}
 
-	caData := secret.Data["RANCHER_CA"]
-	caPool := x509.NewCertPool()
-	if len(caData) > 0 {
+	var tlsConfig *tls.Config
+	if caData := secret.Data["RANCHER_CA"]; len(caData) > 0 {
+		caPool := x509.NewCertPool()
 		caPool.AppendCertsFromPEM(caData)
+		tlsConfig = &tls.Config{RootCAs: caPool}
+	} else {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			return fmt.Errorf("load system cert pool: %w", err)
+		}
+		tlsConfig = &tls.Config{RootCAs: pool}
 	}
 	hc := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: caPool},
+			TLSClientConfig: tlsConfig,
 		},
 	}
 
@@ -353,6 +361,7 @@ func (r *RancherSessionReconciler) applyManifest(ctx context.Context, rs *losant
 		return fmt.Errorf("read manifest body: %w", err)
 	}
 
+	var objects []*unstructured.Unstructured
 	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(manifestData), 4096)
 	for {
 		obj := &unstructured.Unstructured{}
@@ -367,7 +376,15 @@ func (r *RancherSessionReconciler) applyManifest(ctx context.Context, rs *losant
 		}
 		gvk := schema.FromAPIVersionAndKind(obj.GetAPIVersion(), obj.GetKind())
 		obj.SetGroupVersionKind(gvk)
+		objects = append(objects, obj)
+	}
 
+	// Apply ClusterRoles/Roles before bindings so roleRef targets always exist.
+	sort.SliceStable(objects, func(i, j int) bool {
+		return manifestApplyPriority(objects[i].GetKind()) < manifestApplyPriority(objects[j].GetKind())
+	})
+
+	for _, obj := range objects {
 		if err := r.Patch(ctx, obj, client.Apply,
 			client.ForceOwnership,
 			client.FieldOwner("losant-ranchersession")); err != nil {
@@ -376,6 +393,23 @@ func (r *RancherSessionReconciler) applyManifest(ctx context.Context, rs *losant
 		}
 	}
 	return nil
+}
+
+// manifestApplyPriority returns the sort order for Rancher import manifest resources.
+// Roles must be applied before bindings so roleRef targets exist at bind time.
+func manifestApplyPriority(kind string) int {
+	switch kind {
+	case "Namespace":
+		return 0
+	case "ClusterRole", "Role":
+		return 1
+	case "ServiceAccount", "ConfigMap", "Secret":
+		return 2
+	case "ClusterRoleBinding", "RoleBinding":
+		return 3
+	default:
+		return 4
+	}
 }
 
 // rancherClient builds a RancherClient from the session's credentials Secret,

@@ -20,7 +20,9 @@ limitations under the License.
 // minimum-scope permissions (create/get/delete on /v3/clusters only). The token
 // is stored in the credentials Secret under the "RANCHER_TOKEN" key and sent
 // as a Bearer token on every request. TLS is verified against the PEM-encoded
-// CA stored in the "RANCHER_CA" key. "RANCHER_URL" provides the base URL.
+// CA stored in the optional "RANCHER_CA" key; when absent the system cert pool
+// is used (suitable for publicly-trusted Rancher endpoints). "RANCHER_URL" provides
+// the base URL.
 package rancher
 
 import (
@@ -75,7 +77,10 @@ type HTTPClient struct {
 // The Secret must contain:
 //   - "RANCHER_URL"   — base URL of the Rancher Manager instance (e.g. "https://rancher.example.com")
 //   - "RANCHER_TOKEN" — service account Bearer token
-//   - "RANCHER_CA"    — PEM-encoded CA certificate for TLS verification
+//
+// The Secret may optionally contain:
+//   - "RANCHER_CA"    — PEM-encoded CA certificate for TLS verification; when absent
+//     or empty the OS system cert pool is used (suitable for publicly-trusted endpoints)
 func NewHTTPClient(secret *corev1.Secret) (*HTTPClient, error) {
 	rawURL, ok := secret.Data["RANCHER_URL"]
 	if !ok {
@@ -87,20 +92,24 @@ func NewHTTPClient(secret *corev1.Secret) (*HTTPClient, error) {
 		return nil, fmt.Errorf("credentials secret %s/%s missing key \"RANCHER_TOKEN\"",
 			secret.Namespace, secret.Name)
 	}
-	caData, ok := secret.Data["RANCHER_CA"]
-	if !ok {
-		return nil, fmt.Errorf("credentials secret %s/%s missing key \"RANCHER_CA\"",
-			secret.Namespace, secret.Name)
-	}
-
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(caData) {
-		return nil, fmt.Errorf("credentials secret %s/%s: RANCHER_CA contains no valid PEM certificates",
-			secret.Namespace, secret.Name)
+	var tlsConfig *tls.Config
+	if caData := secret.Data["RANCHER_CA"]; len(caData) > 0 {
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caData) {
+			return nil, fmt.Errorf("credentials secret %s/%s: RANCHER_CA contains no valid PEM certificates",
+				secret.Namespace, secret.Name)
+		}
+		tlsConfig = &tls.Config{RootCAs: caPool}
+	} else {
+		pool, err := x509.SystemCertPool()
+		if err != nil {
+			return nil, fmt.Errorf("load system cert pool: %w", err)
+		}
+		tlsConfig = &tls.Config{RootCAs: pool}
 	}
 
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{RootCAs: caPool},
+		TLSClientConfig: tlsConfig,
 	}
 	return &HTTPClient{
 		baseURL: strings.TrimRight(string(rawURL), "/"),

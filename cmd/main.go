@@ -236,6 +236,7 @@ func main() {
 
 	if err := mgr.Add(&trigger.Server{
 		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
 		Addr:      triggerAddr,
 		Namespace: triggerNamespace,
 	}); err != nil {

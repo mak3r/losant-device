@@ -72,7 +72,7 @@ func postRancher(body string) *http.Request {
 
 func TestHandleRancher_MethodNotAllowed(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(triggerScheme).Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := httptest.NewRequest(http.MethodGet, "/rancher", nil)
 	w := httptest.NewRecorder()
@@ -87,7 +87,7 @@ func TestHandleRancher_MethodNotAllowed(t *testing.T) {
 
 func TestHandleRancher_NoLosantSync(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(triggerScheme).Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"connect","ttlSeconds":3600}`)
 	w := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func TestHandleRancher_UnknownAction(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"restart"}`)
 	w := httptest.NewRecorder()
@@ -123,7 +123,7 @@ func TestHandleRancher_InvalidBody(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := httptest.NewRequest(http.MethodPost, "/rancher", strings.NewReader("not-json"))
 	w := httptest.NewRecorder()
@@ -141,7 +141,7 @@ func TestHandleRancher_ConnectCreates202(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"connect","ttlSeconds":7200}`)
 	w := httptest.NewRecorder()
@@ -174,7 +174,7 @@ func TestHandleRancher_ConnectDefaultTTL(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"connect","ttlSeconds":0}`)
 	w := httptest.NewRecorder()
@@ -198,7 +198,7 @@ func TestHandleRancher_ConnectAlreadyExists409(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1"), testRancherSession("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"connect","ttlSeconds":3600}`)
 	w := httptest.NewRecorder()
@@ -216,7 +216,7 @@ func TestHandleRancher_DisconnectDeletes202(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1"), testRancherSession("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"disconnect"}`)
 	w := httptest.NewRecorder()
@@ -240,7 +240,7 @@ func TestHandleRancher_DisconnectNotFound404(t *testing.T) {
 		WithScheme(triggerScheme).
 		WithObjects(testLosantSync("ls-1")).
 		Build()
-	s := &Server{Client: c, Namespace: "default"}
+	s := &Server{Client: c, APIReader: c, Namespace: "default"}
 
 	req := postRancher(`{"action":"disconnect"}`)
 	w := httptest.NewRecorder()
