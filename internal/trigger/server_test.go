@@ -18,6 +18,8 @@ limitations under the License.
 package trigger
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,7 +28,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	losantv1alpha1 "github.com/mak3r/losant-device/api/v1alpha1"
 )
@@ -248,5 +252,103 @@ func TestHandleRancher_DisconnectNotFound404(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("code: got %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+// testClusterScopedLosantSync returns a LosantSync with no namespace set,
+// matching how a cluster-scoped CR is stored in the informer cache.
+func testClusterScopedLosantSync(name string) *losantv1alpha1.LosantSync {
+	return &losantv1alpha1.LosantSync{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: losantv1alpha1.LosantSyncSpec{
+			ApplicationID: "app-1",
+			ClusterName:   "test-cluster",
+		},
+	}
+}
+
+// --- losantSyncName unit tests (issue #453) ---
+
+func TestLosantSyncName_HappyPath(t *testing.T) {
+	c := fake.NewClientBuilder().
+		WithScheme(triggerScheme).
+		WithObjects(testClusterScopedLosantSync("my-sync")).
+		Build()
+	s := &Server{Client: c, Namespace: "default"}
+
+	name, err := s.losantSyncName(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "my-sync" {
+		t.Errorf("name: got %q, want %q", name, "my-sync")
+	}
+}
+
+// TestLosantSyncName_EmptyList is the regression case for issue #450:
+// if InNamespace filtering is applied to a cluster-scoped List, the result
+// is empty and losantSyncName must return an error.
+func TestLosantSyncName_EmptyList(t *testing.T) {
+	c := fake.NewClientBuilder().WithScheme(triggerScheme).Build()
+	s := &Server{Client: c, Namespace: "default"}
+
+	_, err := s.losantSyncName(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "no LosantSync CR found") {
+		t.Errorf("error %q does not contain expected message", err.Error())
+	}
+}
+
+func TestLosantSyncName_ListError(t *testing.T) {
+	listErr := fmt.Errorf("etcd unavailable")
+	inner := fake.NewClientBuilder().WithScheme(triggerScheme).Build()
+	c := interceptor.NewClient(inner, interceptor.Funcs{
+		List: func(_ context.Context, _ client.WithWatch, _ client.ObjectList, _ ...client.ListOption) error {
+			return listErr
+		},
+	})
+	s := &Server{Client: c, Namespace: "default"}
+
+	_, err := s.losantSyncName(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "etcd unavailable") {
+		t.Errorf("error %q does not wrap original error", err.Error())
+	}
+}
+
+// --- Cluster-scoped regression test (issue #451) ---
+
+// TestHandleRancher_ConnectClusterScopedLosantSync verifies that POST /rancher
+// returns 202 when LosantSync exists as a cluster-scoped resource (no namespace).
+// This test would have failed against the pre-fix code that applied InNamespace
+// filtering on a cluster-scoped List.
+func TestHandleRancher_ConnectClusterScopedLosantSync(t *testing.T) {
+	c := fake.NewClientBuilder().
+		WithScheme(triggerScheme).
+		WithObjects(testClusterScopedLosantSync("ls-cluster")).
+		Build()
+	s := &Server{Client: c, Namespace: "default"}
+
+	req := postRancher(`{"action":"connect","ttlSeconds":3600}`)
+	w := httptest.NewRecorder()
+	s.handleRancher(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("code: got %d, want %d", w.Code, http.StatusAccepted)
+	}
+
+	var rsList losantv1alpha1.RancherSessionList
+	if err := c.List(req.Context(), &rsList); err != nil {
+		t.Fatalf("list RancherSessions: %v", err)
+	}
+	if len(rsList.Items) != 1 {
+		t.Errorf("RancherSession count: got %d, want 1", len(rsList.Items))
+	}
+	if rsList.Items[0].Name != "ls-cluster" {
+		t.Errorf("RancherSession name: got %q, want %q", rsList.Items[0].Name, "ls-cluster")
 	}
 }
