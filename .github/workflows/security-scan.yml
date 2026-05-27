@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Fetch full history so gitleaks can scan all commits, not just HEAD.
           # This catches secrets that were added and then "removed" in a later commit.
