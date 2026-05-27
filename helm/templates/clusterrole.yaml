@@ -83,6 +83,41 @@ rules:
   - create
   - delete
   - get
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - serviceaccounts
+  verbs:
+  - create
+  - get
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  verbs:
+  - create
+  - get
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterrolebindings
+  - clusterroles
+  verbs:
+  - bind
+  - create
+  - escalate
+  - get
+  - patch
 - apiGroups:
   - losant.io
   resources:

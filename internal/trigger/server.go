@@ -177,15 +177,15 @@ func (s *Server) handleDisconnect(w http.ResponseWriter, _ *http.Request, ctx co
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// losantSyncName lists LosantSync CRs in the server's namespace and returns
-// the name of the first one (the 1:1 mapping target for RancherSession).
+// losantSyncName lists all LosantSync CRs (cluster-scoped) and returns the
+// name of the first one (the 1:1 mapping target for RancherSession).
 func (s *Server) losantSyncName(ctx context.Context) (string, error) {
 	var lsList losantv1alpha1.LosantSyncList
-	if err := s.Client.List(ctx, &lsList, client.InNamespace(s.Namespace)); err != nil {
-		return "", fmt.Errorf("list LosantSync in %s: %w", s.Namespace, err)
+	if err := s.Client.List(ctx, &lsList); err != nil {
+		return "", fmt.Errorf("list LosantSync: %w", err)
 	}
 	if len(lsList.Items) == 0 {
-		return "", fmt.Errorf("no LosantSync CR found in namespace %s", s.Namespace)
+		return "", fmt.Errorf("no LosantSync CR found")
 	}
 	return lsList.Items[0].Name, nil
 }
