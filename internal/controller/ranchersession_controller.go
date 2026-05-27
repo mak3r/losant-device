@@ -56,7 +56,7 @@ const (
 	rancherConditionAPIReachable = "RancherAPIReachable"
 )
 
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=create;get;patch
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles,verbs=bind;create;escalate;get;patch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,verbs=create;get;patch
 // +kubebuilder:rbac:groups=core,resources=configmaps,verbs=create;get;patch
 // +kubebuilder:rbac:groups=core,resources=serviceaccounts,verbs=create;get;patch
