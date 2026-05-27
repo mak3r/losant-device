@@ -113,7 +113,9 @@ rules:
   - clusterrolebindings
   - clusterroles
   verbs:
+  - bind
   - create
+  - escalate
   - get
   - patch
 - apiGroups:
