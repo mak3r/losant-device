@@ -113,11 +113,38 @@ rules:
   - patch
   - update
   - watch
+# RancherSessionReconciler applies Rancher cluster import manifests via server-side
+# apply (kubectl apply -f <registration-url>). Rancher import manifests contain
+# ClusterRoles (e.g. proxy-clusterrole-kubeapiserver) and ClusterRoleBindings with
+# permissions the controller SA does not itself hold.
+#
+# escalate: bypasses Kubernetes privilege-escalation prevention so the controller can
+#   create/patch ClusterRoles whose rules exceed its own permissions. Without this,
+#   Kubernetes rejects the apply even when create+patch verbs are granted.
+# bind: allows creating ClusterRoleBindings that reference ClusterRoles the SA does
+#   not fully hold. Without this, binding the imported ClusterRoles is rejected.
+#
+# This is the expected security posture for a Rancher import automation controller —
+# equivalent to a cluster operator running kubectl apply -f <registration-url> with
+# cluster-admin credentials. The Rancher project itself uses cluster-admin for entities
+# that automate downstream cluster registration.
+#
+# Accepted risk: the trigger server (internal/trigger/server.go) is ClusterIP-only
+# with no bearer-token auth; auth hardening is tracked as a future task in issue #407.
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  verbs:
+  - bind
+  - create
+  - escalate
+  - get
+  - patch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
   - clusterrolebindings
-  - clusterroles
   verbs:
   - create
   - get
