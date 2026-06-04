@@ -416,6 +416,9 @@ func clusterDeviceAttributes() []DeviceAttribute {
 		{Name: "degraded_pvcs", DataType: "number"},
 		{Name: "coredns_healthy", DataType: "boolean"},
 		{Name: "event_warnings", DataType: "number"},
+		{Name: "last_sync_epoch", DataType: "number"},
+		{Name: "rancher_connected", DataType: "boolean"},
+		{Name: "rancher_session_phase", DataType: "string"},
 	}
 }
 

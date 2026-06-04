@@ -56,6 +56,7 @@ type LosantSyncReconciler struct {
 
 // +kubebuilder:rbac:groups=losant.io,resources=losantsyncs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=losant.io,resources=losantsyncs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=losant.io,resources=ranchersessions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=core,resources=nodes,verbs=get;list;watch
@@ -211,9 +212,14 @@ func (r *LosantSyncReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Step 6: report cluster state to GEA.
+	rancherConnected, rancherPhase := r.rancherSessionStatus(ctx, ls.Namespace)
+	clusterAttrs := clusterAttributes(clusterSnapshot)
+	clusterAttrs["last_sync_epoch"] = time.Now().Unix()
+	clusterAttrs["rancher_connected"] = rancherConnected
+	clusterAttrs["rancher_session_phase"] = rancherPhase
 	if err := gc.ReportState(ctx, gea.StatePayload{
 		DeviceID:   clusterDeviceID,
-		Attributes: clusterAttributes(clusterSnapshot),
+		Attributes: clusterAttrs,
 	}); err != nil {
 		logger.Info("GEA unreachable, will retry", "error", err.Error())
 		return r.setDegraded(ctx, &ls, "GEAReachable", "GEAUnreachable", err.Error())
@@ -387,6 +393,21 @@ func (r *LosantSyncReconciler) healthSnapshot() (monitor.ClusterHealth, map[stri
 		return monitor.ClusterHealth{}, map[string]monitor.NodeHealth{}
 	}
 	return r.HealthStore.Snapshot()
+}
+
+// rancherSessionStatus lists RancherSession objects in namespace and returns the aggregate
+// connected flag and phase string. Returns (false, "None") when no RancherSession CRs exist.
+func (r *LosantSyncReconciler) rancherSessionStatus(ctx context.Context, namespace string) (bool, string) {
+	var sessions losantv1alpha1.RancherSessionList
+	if err := r.List(ctx, &sessions, client.InNamespace(namespace)); err != nil || len(sessions.Items) == 0 {
+		return false, "None"
+	}
+	for _, s := range sessions.Items {
+		if s.Status.Phase == losantv1alpha1.RancherSessionPhaseConnected {
+			return true, string(losantv1alpha1.RancherSessionPhaseConnected)
+		}
+	}
+	return false, string(sessions.Items[0].Status.Phase)
 }
 
 // nextScheduleAndDuration computes the next sync time and the requeue duration
