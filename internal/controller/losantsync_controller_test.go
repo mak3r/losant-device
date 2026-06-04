@@ -1336,3 +1336,128 @@ func TestWorkflowDeployments_MultipleFlows_OnlyStaleReleased(t *testing.T) {
 		t.Errorf("ReleaseWorkflow called for wrong flow: got %q, want flow-stale", call.FlowID)
 	}
 }
+
+// --- rancherSessionStatus and last_sync_epoch ---
+
+// TestRancherSessionStatus_NoSession verifies that when no RancherSession CRs exist,
+// the cluster GEA payload reports rancher_connected=false and rancher_session_phase="None".
+func TestRancherSessionStatus_NoSession(t *testing.T) {
+	ls := baseLS("rancher-no-session")
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_connected", false)
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_session_phase", "None")
+}
+
+// TestRancherSessionStatus_Connected verifies that a Connected RancherSession causes
+// the cluster GEA payload to report rancher_connected=true and rancher_session_phase="Connected".
+func TestRancherSessionStatus_Connected(t *testing.T) {
+	ls := baseLS("rancher-connected")
+	session := &losantv1alpha1.RancherSession{
+		ObjectMeta: metav1.ObjectMeta{Name: "rs-connected"},
+		Status: losantv1alpha1.RancherSessionStatus{
+			Phase: losantv1alpha1.RancherSessionPhaseConnected,
+		},
+	}
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret(), session)
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_connected", true)
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_session_phase", "Connected")
+}
+
+// TestRancherSessionStatus_Disconnected verifies that a non-Connected RancherSession causes
+// the cluster GEA payload to report rancher_connected=false and the actual phase string.
+func TestRancherSessionStatus_Disconnected(t *testing.T) {
+	ls := baseLS("rancher-disconnected")
+	session := &losantv1alpha1.RancherSession{
+		ObjectMeta: metav1.ObjectMeta{Name: "rs-disconnected"},
+		Status: losantv1alpha1.RancherSessionStatus{
+			Phase: losantv1alpha1.RancherSessionPhaseDisconnected,
+		},
+	}
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret(), session)
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_connected", false)
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_session_phase", "Disconnected")
+}
+
+// TestRancherSessionStatus_MultipleConnectedWins verifies that when multiple RancherSession CRs
+// exist and at least one is Connected, the payload reports rancher_connected=true and
+// rancher_session_phase="Connected".
+func TestRancherSessionStatus_MultipleConnectedWins(t *testing.T) {
+	ls := baseLS("rancher-multi")
+	objs := []client.Object{
+		ls,
+		credsSecret(),
+		&losantv1alpha1.RancherSession{
+			ObjectMeta: metav1.ObjectMeta{Name: "rs-connecting"},
+			Status:     losantv1alpha1.RancherSessionStatus{Phase: losantv1alpha1.RancherSessionPhaseConnecting},
+		},
+		&losantv1alpha1.RancherSession{
+			ObjectMeta: metav1.ObjectMeta{Name: "rs-connected"},
+			Status:     losantv1alpha1.RancherSessionStatus{Phase: losantv1alpha1.RancherSessionPhaseConnected},
+		},
+	}
+	mg := gea.NewMockClient()
+	c := buildClient(objs...)
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_connected", true)
+	mg.AssertPayloadContains(t, "mock-cluster-device-id", "rancher_session_phase", "Connected")
+}
+
+// TestClusterAttributesIncludesSyncEpoch verifies that the cluster GEA state payload
+// contains a last_sync_epoch value within the test's execution window.
+func TestClusterAttributesIncludesSyncEpoch(t *testing.T) {
+	ls := baseLS("sync-epoch")
+	mg := gea.NewMockClient()
+	c := buildClient(ls, credsSecret())
+	r := newReconciler(c, losant.NewMockClient(), mg, monitor.NewHealthStore())
+
+	before := time.Now().Unix()
+	if _, err := reconcileTwice(t, r, reqFor(ls.Name)); err != nil {
+		t.Fatalf("reconcile error: %v", err)
+	}
+	after := time.Now().Unix()
+
+	var clusterPayload *gea.StatePayload
+	for i := range mg.Calls {
+		if mg.Calls[i].DeviceID == "mock-cluster-device-id" {
+			p := mg.Calls[i]
+			clusterPayload = &p
+			break
+		}
+	}
+	if clusterPayload == nil {
+		t.Fatal("no GEA ReportState call found for cluster device")
+	}
+	epoch, ok := clusterPayload.Attributes["last_sync_epoch"]
+	if !ok {
+		t.Fatal("cluster state payload missing last_sync_epoch attribute")
+	}
+	epochInt, ok := epoch.(int64)
+	if !ok {
+		t.Fatalf("last_sync_epoch type: got %T, want int64", epoch)
+	}
+	if epochInt < before || epochInt > after {
+		t.Errorf("last_sync_epoch %d not in expected range [%d, %d]", epochInt, before, after)
+	}
+}
