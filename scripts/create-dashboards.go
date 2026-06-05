@@ -181,7 +181,7 @@ func (c *apiClient) do(method, path string, body interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("api %s %s → %d: %s", method, path, resp.StatusCode, b)
@@ -262,83 +262,6 @@ func (c *apiClient) ensureDashboard(name string, payload map[string]interface{},
 // bounds returns a Losant grid bounds object. x and y are 0-based; w and h are column/row counts.
 func bounds(x, y, w, h int) map[string]int {
 	return map[string]int{"x": x, "y": y, "w": w, "h": h}
-}
-
-// numberGauge builds a simple number gauge block using the last device state.
-func numberGauge(id, title string, b map[string]int, attribute, aggregation string, deviceTagKey, deviceTagValue string) map[string]interface{} {
-	query := map[string]interface{}{
-		"deviceTags": []map[string]string{{"key": deviceTagKey, "value": deviceTagValue}},
-		"attributes": []map[string]interface{}{{
-			"label":       title,
-			"attribute":   attribute,
-			"aggregation": aggregation,
-		}},
-	}
-	return map[string]interface{}{
-		"id":        id,
-		"blockType": "number-gauge",
-		"title":     title,
-		"bounds":    b,
-		"config": map[string]interface{}{
-			"duration":    0,
-			"displayText": "{{value}}",
-			"query":       query,
-		},
-	}
-}
-
-// timeSeries builds a time-series graph block.
-func timeSeries(id, title string, b map[string]int, duration int, attributes []map[string]interface{}, deviceTagKey, deviceTagValue string) map[string]interface{} {
-	return map[string]interface{}{
-		"id":        id,
-		"blockType": "time-series-graph",
-		"title":     title,
-		"bounds":    b,
-		"config": map[string]interface{}{
-			"duration": duration,
-			"resolution": map[string]interface{}{
-				"type": "auto",
-			},
-			"queries": []map[string]interface{}{{
-				"deviceTags": []map[string]string{{"key": deviceTagKey, "value": deviceTagValue}},
-				"attributes": attributes,
-			}},
-		},
-	}
-}
-
-// customChart builds a Vega-Lite custom chart block.
-func customChart(id, title string, b map[string]int, vegaSpec, attribute, deviceTagKey, deviceTagValue string) map[string]interface{} {
-	return map[string]interface{}{
-		"id":        id,
-		"blockType": "custom-chart",
-		"title":     title,
-		"bounds":    b,
-		"config": map[string]interface{}{
-			"vegaSpec": vegaSpec,
-			"duration": 3600,
-			"queries": []map[string]interface{}{{
-				"deviceTags": []map[string]string{{"key": deviceTagKey, "value": deviceTagValue}},
-				"attributes": []map[string]interface{}{{"attribute": attribute, "aggregation": "LAST"}},
-			}},
-		},
-	}
-}
-
-// indicator builds an indicator block.
-func indicator(id, title string, b map[string]int, attribute, deviceTagKey, deviceTagValue string, states []map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"id":        id,
-		"blockType": "indicator",
-		"title":     title,
-		"bounds":    b,
-		"config": map[string]interface{}{
-			"duration":   0,
-			"states":     states,
-			"deviceTags": []map[string]string{{"key": deviceTagKey, "value": deviceTagValue}},
-			"attribute":  attribute,
-		},
-	}
 }
 
 // ---- Dashboard 2: Cluster Detail (created first) ----------------------------
