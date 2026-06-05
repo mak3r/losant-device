@@ -53,6 +53,8 @@ Open the printed URLs in your browser to confirm both dashboards appear in the L
 
 ## Rancher Connect/Disconnect Buttons (Block 2L)
 
+> **Note:** `--rancher-connect-key` and `--rancher-disconnect-key` are not yet available in the current release. They are being added in [PR #486](https://github.com/mak3r/losant-device/pull/486). Until that PR merges, run without those two flags — Block 2L will be omitted and can be added later with `--force`.
+
 The Cluster Detail dashboard includes an optional **Rancher Session Controls** block (Block 2L) with connect and disconnect buttons. This block is only provisioned when all three Rancher flags are supplied.
 
 ### Required flags
@@ -60,8 +62,8 @@ The Cluster Detail dashboard includes an optional **Rancher Session Controls** b
 | Flag | Environment variable | Description |
 |---|---|---|
 | `--rancher-workflow-id` | *(none)* | Losant Workflow ID that handles connect/disconnect |
-| `--rancher-connect-key` | `LOSANT_RANCHER_CONNECT_KEY` | Virtual button node key for the connect action |
-| `--rancher-disconnect-key` | `LOSANT_RANCHER_DISCONNECT_KEY` | Virtual button node key for the disconnect action |
+| `--rancher-connect-key` | `LOSANT_RANCHER_CONNECT_KEY` | Virtual button node key for the connect action *(pending PR #486)* |
+| `--rancher-disconnect-key` | `LOSANT_RANCHER_DISCONNECT_KEY` | Virtual button node key for the disconnect action *(pending PR #486)* |
 
 ### Finding the virtual button keys
 
@@ -138,5 +140,5 @@ Use `--force` only when:
 | `--api-token` | `$LOSANT_API_TOKEN` | Losant Application API Token |
 | `--force` | false | Delete and recreate dashboards that already exist |
 | `--rancher-workflow-id` | *(empty)* | Workflow ID for Rancher virtual button triggers |
-| `--rancher-connect-key` | `$LOSANT_RANCHER_CONNECT_KEY` | Virtual button key for connect action |
-| `--rancher-disconnect-key` | `$LOSANT_RANCHER_DISCONNECT_KEY` | Virtual button key for disconnect action |
+| `--rancher-connect-key` | `$LOSANT_RANCHER_CONNECT_KEY` | Virtual button key for connect action *(pending PR #486)* |
+| `--rancher-disconnect-key` | `$LOSANT_RANCHER_DISCONNECT_KEY` | Virtual button key for disconnect action *(pending PR #486)* |
