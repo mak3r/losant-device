@@ -704,8 +704,8 @@ func TestEnsureClusterDevice_Created_HasAttributes(t *testing.T) {
 	if !ok {
 		t.Fatalf("POST body missing 'attributes' field; body: %v", postBody)
 	}
-	if len(attrs) != 13 {
-		t.Errorf("cluster attribute count: got %d, want 13", len(attrs))
+	if len(attrs) != 16 {
+		t.Errorf("cluster attribute count: got %d, want 16", len(attrs))
 	}
 }
 
@@ -760,8 +760,8 @@ func TestEnsureClusterDevice_Found_PatchHasAttributes(t *testing.T) {
 		t.Fatal("PATCH handler was not called")
 	}
 	attrs, ok := patchBody["attributes"].([]interface{})
-	if !ok || len(attrs) != 13 {
-		t.Errorf("PATCH body: expected 13 cluster attributes, got: %v", patchBody["attributes"])
+	if !ok || len(attrs) != 16 {
+		t.Errorf("PATCH body: expected 16 cluster attributes, got: %v", patchBody["attributes"])
 	}
 }
 
