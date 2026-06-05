@@ -11,6 +11,7 @@ This guide walks through deploying the losant-device operator and connecting it 
 | [3. Deploy](3-deploy.md) | Terminal | `helm install` + apply LosantSync CR |
 | [4. Edge Workflow](4-losant-workflow.md) | Losant UI | Create and deploy Edge Workflow |
 | [5. Verify](5-verify.md) | Terminal + Losant UI | Confirm data is flowing |
+| [5b. Create Dashboards](5b-dashboards.md) | Terminal | Provision Fleet Overview + Cluster Detail dashboards |
 | [6. Cleanup](6-cleanup.md) | Terminal + Losant UI | Teardown and reset (when needed) |
 | [7. Troubleshooting](7-troubleshooting.md) | Terminal | Diagnose GEA bootstrap and common failures |
 

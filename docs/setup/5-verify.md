@@ -117,11 +117,12 @@ See [Troubleshooting](7-troubleshooting.md#gea-access-key-rejected-after-bootstr
 
 ## Dashboard quick-start
 
-Once metrics are flowing, create a three-level dashboard hierarchy:
+Once metrics are flowing, use `scripts/create-dashboards.go` to provision the pre-built Fleet Overview and Cluster Detail dashboards automatically. See [Step 5b — Create Losant Dashboards](5b-dashboards.md) for prerequisites, usage, and flag reference.
 
-1. **Fleet Dashboard**: filter `device_type=cluster`; add table block with `cluster_name`, `region`, `health_score`
-2. **Cluster Dashboard**: add context variable `cluster_name`; filter `device_type=node` + context variable; add health gauges
-3. **Node Dashboard**: add context variable for device ID; use single-device time-series blocks for node metrics
+The dashboards form a two-level hierarchy:
+
+1. **Fleet Overview** (`k8s-fleet-overview`) — fleet-wide view linking out to individual clusters
+2. **Cluster Detail** (`k8s-cluster-detail`) — per-cluster view with node health, pod counts, and optional Rancher session controls
 
 See [docs/architecture.md](../architecture.md#dashboard-hierarchy) for the full specification.
 
