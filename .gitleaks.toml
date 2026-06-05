@@ -25,6 +25,9 @@ regexes = [
   '''fake-.*-secret''',
   '''test-access-key''',
   '''test-access-secret''',
+  # Common hex/alphanumeric placeholder strings used in documentation examples
+  # e.g. "key": "abcdef123456" in JSON snippets — low entropy, clearly illustrative
+  '''(?i)abcdef[0-9a-f]+''',
 ]
 
 [[rules]]
