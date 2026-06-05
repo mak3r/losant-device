@@ -25,10 +25,12 @@ regexes = [
   '''fake-.*-secret''',
   '''test-access-key''',
   '''test-access-secret''',
-  # Common hex/alphanumeric placeholder strings used in documentation examples
-  # e.g. "key": "abcdef123456" in JSON snippets — low entropy, clearly illustrative
-  '''(?i)abcdef[0-9a-f]+''',
 ]
+
+[[allowlists]]
+description = "JSON virtualButton key example in docs (illustrative placeholder)"
+regexTarget = "line"
+regexes = ['''"key"\s*:\s*"abcdef[0-9a-f]+"''']
 
 [[rules]]
 id = "losant-access-key"
