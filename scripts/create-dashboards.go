@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -266,7 +267,7 @@ func bounds(x, y, w, h int) map[string]int {
 
 // ---- Dashboard 2: Cluster Detail (created first) ----------------------------
 
-func clusterDetailDashboard(appID, rancherWorkflowID string) map[string]interface{} {
+func clusterDetailDashboard(appID, rancherWorkflowID, rancherConnectKey, rancherDisconnectKey string) map[string]interface{} {
 	// Context variable: deviceId (device ID picker)
 	ctxVars := []map[string]interface{}{{
 		"id":            "deviceId",
@@ -519,7 +520,7 @@ func clusterDetailDashboard(appID, rancherWorkflowID string) map[string]interfac
 					"color":      "#27ae60",
 					"workflowId": rancherWorkflowID,
 					"virtualButton": map[string]interface{}{
-						"key":     "rancher-connect",
+						"key":     rancherConnectKey,
 						"payload": map[string]interface{}{"action": "connect", "deviceId": "{{ctx.deviceId}}"},
 					},
 				},
@@ -529,7 +530,7 @@ func clusterDetailDashboard(appID, rancherWorkflowID string) map[string]interfac
 					"color":      "#e74c3c",
 					"workflowId": rancherWorkflowID,
 					"virtualButton": map[string]interface{}{
-						"key":     "rancher-disconnect",
+						"key":     rancherDisconnectKey,
 						"payload": map[string]interface{}{"action": "disconnect", "deviceId": "{{ctx.deviceId}}"},
 					},
 				},
@@ -542,7 +543,7 @@ func clusterDetailDashboard(appID, rancherWorkflowID string) map[string]interfac
 	blocks = append(blocks, podBlocks...)
 	blocks = append(blocks, infraBlocks...)
 	blocks = append(blocks, block2G, block2H, block2I, block2J, block2K)
-	if rancherWorkflowID != "" {
+	if rancherWorkflowID != "" && rancherConnectKey != "" && rancherDisconnectKey != "" {
 		blocks = append(blocks, rancherButtons)
 	}
 
@@ -877,15 +878,19 @@ func fleetOverviewDashboard(appID, clusterDetailDashboardID string) map[string]i
 
 func main() {
 	var (
-		appID       string
-		apiToken    string
-		force       bool
-		rancherWFID string
+		appID                string
+		apiToken             string
+		force                bool
+		rancherWFID          string
+		rancherConnectKey    string
+		rancherDisconnectKey string
 	)
 	flag.StringVar(&appID, "app-id", os.Getenv("LOSANT_APP_ID"), "Losant Application ID (or LOSANT_APP_ID env)")
 	flag.StringVar(&apiToken, "api-token", os.Getenv("LOSANT_API_TOKEN"), "Losant Application API Token (or LOSANT_API_TOKEN env)")
 	flag.BoolVar(&force, "force", false, "Delete and recreate dashboards if they already exist")
 	flag.StringVar(&rancherWFID, "rancher-workflow-id", "", "Losant Workflow ID for Rancher connect/disconnect virtual buttons")
+	flag.StringVar(&rancherConnectKey, "rancher-connect-key", os.Getenv("LOSANT_RANCHER_CONNECT_KEY"), "Virtual button node key for the Rancher connect action (or LOSANT_RANCHER_CONNECT_KEY env)")
+	flag.StringVar(&rancherDisconnectKey, "rancher-disconnect-key", os.Getenv("LOSANT_RANCHER_DISCONNECT_KEY"), "Virtual button node key for the Rancher disconnect action (or LOSANT_RANCHER_DISCONNECT_KEY env)")
 	flag.Parse()
 
 	if appID == "" {
@@ -902,7 +907,7 @@ func main() {
 	}
 
 	fmt.Println("Creating Cluster Detail dashboard (step 1 of 2)...")
-	clusterDetailID, err := c.ensureDashboard(nameClusterDetail, clusterDetailDashboard(appID, rancherWFID), force)
+	clusterDetailID, err := c.ensureDashboard(nameClusterDetail, clusterDetailDashboard(appID, rancherWFID, rancherConnectKey, rancherDisconnectKey), force)
 	if err != nil {
 		log.Fatalf("cluster detail: %v", err)
 	}
@@ -917,9 +922,19 @@ func main() {
 	fmt.Println("=== Done ===")
 	fmt.Printf("Fleet Overview:  %s/%s\n", dashboardUIBase, fleetOverviewID)
 	fmt.Printf("Cluster Detail:  %s/%s\n", dashboardUIBase, clusterDetailID)
-	if rancherWFID == "" {
+	if rancherWFID == "" || rancherConnectKey == "" || rancherDisconnectKey == "" {
+		var missing []string
+		if rancherWFID == "" {
+			missing = append(missing, "--rancher-workflow-id")
+		}
+		if rancherConnectKey == "" {
+			missing = append(missing, "--rancher-connect-key")
+		}
+		if rancherDisconnectKey == "" {
+			missing = append(missing, "--rancher-disconnect-key")
+		}
 		fmt.Println()
-		fmt.Println("Note: --rancher-workflow-id was not set; Block 2L (Rancher buttons) was omitted.")
-		fmt.Println("Re-run with --force --rancher-workflow-id <id> to add it.")
+		fmt.Printf("Note: Block 2L (Rancher buttons) was omitted — missing: %s\n", strings.Join(missing, ", "))
+		fmt.Println("Re-run with --force and all three flags to add it.")
 	}
 }
