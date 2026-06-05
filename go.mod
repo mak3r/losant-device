@@ -1,6 +1,6 @@
 module github.com/mak3r/losant-device
 
-go 1.26.3
+go 1.26.4
 
 godebug default=go1.26
 
