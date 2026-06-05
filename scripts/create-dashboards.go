@@ -330,33 +330,6 @@ func countBlock(id, title, appID string, p map[string]interface{}, query string)
 	})
 }
 
-// gaugeBlock creates a needle gauge showing an attribute aggregated across devices.
-func gaugeBlock(id, title, appID string, p map[string]interface{}, query, attribute, aggType string) map[string]interface{} {
-	return mergeBlock(id, "gauge", title, appID, p, map[string]interface{}{
-		"gaugeType":           "dial",
-		"realTime":            false,
-		"precision":           "0",
-		"precisionType":       "significant",
-		"displayAsPercentage": false,
-		"gaugeMin":            "0",
-		"gaugeMax":            "100",
-		"duration":            0,
-		"segment": map[string]interface{}{
-			"query":     query,
-			"attribute": attribute,
-			"aggregation": map[string]interface{}{
-				"type":    aggType,
-				"options": map[string]interface{}{},
-			},
-			"label": title,
-			"color": "#8db319",
-		},
-		"conditions": []map[string]interface{}{
-			{"condition": "{{gauge.max}}", "color": "#8db319", "id": "cg"},
-		},
-	})
-}
-
 // sumGaugeBlock shows a sum of an attribute across devices with no upper bound display.
 func sumGaugeBlock(id, title, appID string, p map[string]interface{}, query, attribute string) map[string]interface{} {
 	return mergeBlock(id, "gauge", title, appID, p, map[string]interface{}{
@@ -676,7 +649,6 @@ func fleetOverviewDashboard(appID, clusterDetailDashboardID string) map[string]i
 	// 1J-3: Active reporting clusters time series (last 6h)
 	block1J3 := graphBlock("1j3", "Active Reporting Clusters (6h)", appID, pos(0, y+1, 4, 2), 21600,
 		[]map[string]interface{}{graphSegment(q, "health_score", "Active Clusters", "#8db319", "COUNT")})
-	y += 2
 
 	blocks := []map[string]interface{}{
 		block1A1, block1A2, block1A3, block1A4,
